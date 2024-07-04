@@ -1,0 +1,11 @@
+{
+    "ip_weight": 0.3,
+    "ua_weight": 0.2,
+    "os_weight": 0.2,
+    "device_weight": 0.2,
+    "browser_weight": 0.1,
+    "other_weights": {
+        "example_key": 0.4
+    }
+}
+
