@@ -1,91 +1,290 @@
 package risk
 
 import (
-	"math/rand"
-	"risk_evaluation_system/internal/preprocessing"
+	"fmt"
 	"sync"
-	"time"
+
+	"risk_evaluation_system/internal/preprocessing"
 )
 
-// RiskResult contains the risk scores for a login attempt.
-type RiskResult struct {
-	UserID             string
-	SessionStart       time.Time
-	LoginAttemptNumber int
-	RiskScore          float64
-	IPScore            float64
-	UAScore            float64
-	IPStatus           string
-	ISPStatus          string
-	CityStatus         string
-	BrowserStatus      string
-	OSStatus           string
-	DeviceStatus       string
+type LogChecker struct {
+	ipMap             map[string]int
+	ispMap            map[string]int
+	cityMap           map[string]int
+	browserNameMap    map[string]int
+	browserVersionMap map[string]int
+	osNameMap         map[string]int
+	osVersionMap      map[string]int
+	deviceTypeMap     map[string]int
+	totalCount        int
 }
 
-// RiskEvaluator contains configuration and methods for risk evaluation.
-type RiskEvaluator struct {
-	featureWeights map[string]float64
-}
+func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps map[string]map[string]int, mutexes map[string]*sync.Mutex) {
+	defer wg.Done()
 
-// NewRiskEvaluator creates a new RiskEvaluator with the given configuration.
-func NewRiskEvaluator(featureWeights map[string]float64) *RiskEvaluator {
-	return &RiskEvaluator{
-		featureWeights: featureWeights,
+	for _, log := range logs {
+		mutexes["ip"].Lock()
+		maps["ip"][log.LoginIP]++
+		mutexes["ip"].Unlock()
+
+		mutexes["isp"].Lock()
+		maps["isp"][log.ISP]++
+		mutexes["isp"].Unlock()
+
+		mutexes["city"].Lock()
+		maps["city"][log.City]++
+		mutexes["city"].Unlock()
+
+		mutexes["browserName"].Lock()
+		maps["browserName"][log.BrowserName]++
+		mutexes["browserName"].Unlock()
+
+		mutexes["browserVersion"].Lock()
+		maps["browserVersion"][log.BrowserVersion]++
+		mutexes["browserVersion"].Unlock()
+
+		mutexes["osName"].Lock()
+		maps["osName"][log.OSName]++
+		mutexes["osName"].Unlock()
+
+		mutexes["osVersion"].Lock()
+		maps["osVersion"][log.OSVersion]++
+		mutexes["osVersion"].Unlock()
+
+		mutexes["deviceType"].Lock()
+		maps["deviceType"][log.DeviceType]++
+		mutexes["deviceType"].Unlock()
 	}
 }
 
-// TODO: Implement the actual risk calculation logic here.
-// EvaluateRisk evaluates the risk for a single login attempt.
-func (re *RiskEvaluator) EvaluateRisk(attempt preprocessing.LoginAttempt, userLogs []preprocessing.LogEntry, allLogs []preprocessing.LogEntry) RiskResult {
-	// Placeholder: Implement the actual risk calculation logic here.
-	riskScore := rand.Float64() * 10 // Random score for now
+func NewLogChecker(logs []preprocessing.LogFeatureEntry) *LogChecker {
+	ipMap := make(map[string]int)
+	ispMap := make(map[string]int)
+	cityMap := make(map[string]int)
+	browserNameMap := make(map[string]int)
+	browserVersionMap := make(map[string]int)
+	osNameMap := make(map[string]int)
+	osVersionMap := make(map[string]int)
+	deviceTypeMap := make(map[string]int)
 
-	return RiskResult{
-		UserID:             attempt.UserID,
-		SessionStart:       attempt.LogTime,
-		LoginAttemptNumber: len(userLogs) + 1,
-		RiskScore:          riskScore,
-		IPScore:            rand.Float64() * 10, // Random score for now
-		UAScore:            rand.Float64() * 10, // Random score for now
-		IPStatus:           "unknown",           // Placeholder
-		ISPStatus:          "unknown",           // Placeholder
-		CityStatus:         "unknown",           // Placeholder
-		BrowserStatus:      "unknown",           // Placeholder
-		OSStatus:           "unknown",           // Placeholder
-		DeviceStatus:       "unknown",           // Placeholder
+	maps := map[string]map[string]int{
+		"ip":             ipMap,
+		"isp":            ispMap,
+		"city":           cityMap,
+		"browserName":    browserNameMap,
+		"browserVersion": browserVersionMap,
+		"osName":         osNameMap,
+		"osVersion":      osVersionMap,
+		"deviceType":     deviceTypeMap,
 	}
-}
 
-// TODO: Implement the actual risk calculation logic here.
-// EvaluateAllRisks evaluates the risk for all login attempts in parallel.
-func (re *RiskEvaluator) EvaluateAllRisks(attempts []preprocessing.LoginAttempt, allLogs []preprocessing.LogEntry) []RiskResult {
 	var wg sync.WaitGroup
-	results := make([]RiskResult, len(attempts))
-	userLogsMap := make(map[string][]preprocessing.LogEntry)
+	n := len(logs)
+	chunks := 4 // 分块数
+	chunkSize := n / chunks
 
-	// Group logs by user ID for quick access
-	for _, log := range allLogs {
-		userLogsMap[log.UserID] = append(userLogsMap[log.UserID], log)
+	// 初始化互斥锁
+	mutexes := map[string]*sync.Mutex{
+		"ip":             &sync.Mutex{},
+		"isp":            &sync.Mutex{},
+		"city":           &sync.Mutex{},
+		"browserName":    &sync.Mutex{},
+		"browserVersion": &sync.Mutex{},
+		"osName":         &sync.Mutex{},
+		"osVersion":      &sync.Mutex{},
+		"deviceType":     &sync.Mutex{},
 	}
 
-	// Evaluate each attempt in parallel
-	for i, attempt := range attempts {
+	for i := 0; i < chunks; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if i == chunks-1 {
+			end = n
+		}
 		wg.Add(1)
-		go func(i int, attempt preprocessing.LoginAttempt) {
-			defer wg.Done()
-			userLogs := userLogsMap[attempt.UserID]
-			results[i] = re.EvaluateRisk(attempt, userLogs, allLogs)
-		}(i, attempt)
+		go processLogs(logs[start:end], &wg, maps, mutexes)
 	}
 
 	wg.Wait()
-	return results
+
+	return &LogChecker{
+		ipMap:             ipMap,
+		ispMap:            ispMap,
+		cityMap:           cityMap,
+		browserNameMap:    browserNameMap,
+		browserVersionMap: browserVersionMap,
+		osNameMap:         osNameMap,
+		osVersionMap:      osVersionMap,
+		deviceTypeMap:     deviceTypeMap,
+		totalCount:        n,
+	}
 }
 
-// TODO: Implement the actual risk calculation logic here.
-// Placeholder for actual risk calculation logic.
-func calculateRiskScore(attempt preprocessing.LoginAttempt, userLogs []preprocessing.LogEntry, allLogs []preprocessing.LogEntry, weights map[string]float64) (float64, float64, float64, string, string, string, string, string, string) {
-	// Placeholder implementation. Replace with actual risk calculation.
-	return rand.Float64() * 10, rand.Float64() * 10, rand.Float64() * 10, "unknown", "unknown", "unknown", "unknown", "unknown", "unknown"
+// ? May need a dynamic version unseen value
+// TODO: need a recursive version
+func (lc *LogChecker) GetUnseenCount(attempt preprocessing.LogAttemptVector, feature string) (float64, error) {
+	switch feature {
+	case "ip":
+		if _, ok := lc.ipMap[attempt.LoginIP]; ok {
+			return 1, nil
+		} else if _, ok := lc.ispMap[attempt.ISP]; ok {
+			return 10, nil
+		} else {
+			return 50, nil
+		}
+	case "browser":
+		return 5, nil
+	case "os":
+		return 5, nil
+	case "device":
+		return 5, nil
+	default:
+		return 0, fmt.Errorf("unknown feature: %s", feature)
+	}
+}
+
+func (lc *LogChecker) GetOccurrenceRateUser(attempt preprocessing.LogAttemptVector, feature string) (float64, error) {
+	M, err := lc.GetUnseenCount(attempt, feature)
+	if err != nil {
+		return 0, err
+	}
+
+	a := 1.0 / (float64(lc.totalCount) + M)
+	var count int
+
+	switch feature {
+	case "ip":
+		count = lc.ipMap[attempt.LoginIP]
+	case "isp":
+		count = lc.ispMap[attempt.ISP]
+	case "city":
+		count = lc.cityMap[attempt.City]
+	case "browser":
+		count = lc.browserNameMap[attempt.BrowserName]
+	case "os":
+		count = lc.osNameMap[attempt.OSName]
+	case "device":
+		count = lc.deviceTypeMap[attempt.DeviceType]
+	default:
+		return 0, fmt.Errorf("unknown feature: %s", feature)
+	}
+
+	if count == 0 {
+		return a, nil
+	}
+
+	return float64(count) * a, nil
+}
+
+func (lc *LogChecker) GetOccurrenceRateGlobal(attempt preprocessing.LogAttemptVector, feature string, logs []preprocessing.LogFeatureEntry) (float64, error) {
+	logChecker := NewLogChecker(logs)
+
+	return logChecker.GetOccurrenceRateUser(attempt, feature)
+}
+
+func (lc *LogChecker) GetUserOccurrenceRate(logs []preprocessing.LogFeatureEntry) (float64, error) {
+	if len(logs) == 0 {
+		return 0, fmt.Errorf("empty log checker")
+	}
+	return float64(lc.totalCount) / float64(len(logs)), nil
+}
+
+// TODO: double check needed
+func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []preprocessing.LogFeatureEntry {
+	var wg sync.WaitGroup
+	numWorkers := 4
+	chunkSize := (len(logs) + numWorkers - 1) / numWorkers
+
+	resultCh := make(chan []preprocessing.LogFeatureEntry, numWorkers)
+
+	for i := 0; i < numWorkers; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > len(logs) {
+			end = len(logs)
+		}
+
+		wg.Add(1)
+		go func(logChunk []preprocessing.LogFeatureEntry) {
+			defer wg.Done()
+			userLogs := make([]preprocessing.LogFeatureEntry, 0)
+			for _, log := range logChunk {
+				if log.UserID == userID {
+					userLogs = append(userLogs, log)
+				}
+			}
+			resultCh <- userLogs
+		}(logs[start:end])
+	}
+
+	wg.Wait()
+	close(resultCh)
+
+	userLogs := make([]preprocessing.LogFeatureEntry, 0)
+	for logs := range resultCh {
+		userLogs = append(userLogs, logs...)
+	}
+
+	return userLogs
+}
+
+func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
+	userID := attempt.UserID
+
+	userLogs := filterLogsByUserID(userID, logs)
+
+	userLogChecker := NewLogChecker(userLogs)
+
+	features := []string{"ip", "isp", "city", "browser", "os", "device"}
+
+	puL, err := userLogChecker.GetUserOccurrenceRate(logs)
+	if err != nil {
+		return 0, err
+	}
+	if puL == 0 {
+		return 0, fmt.Errorf("empty log checker")
+	}
+	result := 1.0 / puL
+
+	type rateResult struct {
+		px  float64
+		pxu float64
+		err error
+	}
+
+	rateCh := make(chan rateResult, len(features))
+	var wg sync.WaitGroup
+
+	for _, feature := range features {
+		wg.Add(1)
+		go func(feature string) {
+			defer wg.Done()
+
+			pxu, err := userLogChecker.GetOccurrenceRateUser(attempt, feature)
+			if err != nil {
+				rateCh <- rateResult{0, 0, err}
+				return
+			}
+
+			px, err := userLogChecker.GetOccurrenceRateGlobal(attempt, feature, logs)
+			if err != nil {
+				rateCh <- rateResult{0, 0, err}
+				return
+			}
+
+			rateCh <- rateResult{px, pxu, nil}
+		}(feature)
+	}
+
+	wg.Wait()
+	close(rateCh)
+
+	for r := range rateCh {
+		if r.err != nil {
+			return 0, r.err
+		}
+		result *= r.px / r.pxu
+	}
+
+	return result, nil
 }

@@ -1,11 +1,13 @@
 {
-    "ip_weight": 0.3,
-    "ua_weight": 0.2,
-    "os_weight": 0.2,
-    "device_weight": 0.2,
-    "browser_weight": 0.1,
-    "other_weights": {
-        "example_key": 0.4
+    "ip": {
+        "LoginIP": 0.6,
+        "ISP": 0.3,
+        "City": 0.1
+    },
+    "ua": {
+        "BrowserNameandVersion": 0.7,
+        "OperatingSystemNameandVersion": 0.2,
+        "DeviceType": 0.1
     }
 }
 

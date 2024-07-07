@@ -1,18 +1,19 @@
 package preprocessing
 
 import (
-	// "bufio"
 	"encoding/csv"
 	"fmt"
-	"log"
 	"os"
-	"risk_evaluation_system/internal/utils"
+	"strings"
 	"sync"
 	"time"
+
+	"risk_evaluation_system/internal/utils"
 
 	"github.com/mssola/useragent"
 )
 
+// LogEntry represents a single log entry.
 type LogEntry struct {
 	UserID                string
 	GID                   string
@@ -34,38 +35,34 @@ type LogEntry struct {
 	DeviceType            string
 }
 
-type LoginAttempt struct {
-	UserID                string
-	GID                   string
-	LogTime               time.Time
-	ObjectiveSystem       string
-	LoginIP               string
-	BrowserFingerprinting string
-	Country               string
-	RegionName            string
-	City                  string
-	ISP                   string
-	Org                   string
-	AS                    string
-	Agent                 string
-	BrowserName           string
-	BrowserVersion        string
-	OSName                string
-	OSVersion             string
-	DeviceType            string
+// LogFeatureEntry represents a single log entry with extracted partial features.
+type LogFeatureEntry struct {
+	UserID         string
+	LogTime        time.Time
+	LoginIP        string
+	City           string
+	ISP            string
+	BrowserName    string
+	BrowserVersion string
+	OSName         string
+	OSVersion      string
+	DeviceType     string
 }
+
+// LoginAttempt represents a single login attempt.
+type LoginAttempt LogEntry
+type LogAttemptVector LogFeatureEntry
 
 func parseLogEntry(record []string) (LogEntry, error) {
 	logTime, err := time.Parse("2006-01-02 15:04", record[2])
 	if err != nil {
-		return LogEntry{}, err
+		return LogEntry{}, fmt.Errorf("failed to parse log time: %v", err)
 	}
 
 	ua := useragent.New(record[12])
 	browserName, browserVersion := ua.Browser()
-	osName := ua.OSInfo().Name
-	osVersion := ua.OSInfo().Version
-	deviceType := utils.DetermineDeviceType(record[12])
+	osName, osVersion := ua.OSInfo().Name, ua.OSInfo().Version
+	deviceType := getDeviceType(record[12])
 
 	return LogEntry{
 		UserID:                utils.CleanString(record[0]),
@@ -89,6 +86,47 @@ func parseLogEntry(record []string) (LogEntry, error) {
 	}, nil
 }
 
+func getDeviceType(uA string) string {
+	ua := useragent.New(uA)
+	if ua.Mobile() {
+		return "Mobile"
+	} else if ua.Bot() {
+		return "Bot"
+	} else if ua.Platform() == "Windows" || ua.Platform() == "Linux" || ua.Platform() == "Macintosh" {
+		return "Desktop/Laptop"
+	} else {
+		return "Unknown"
+	}
+}
+
+func extractFeatures(logs []LogEntry) []LogFeatureEntry {
+	wg := sync.WaitGroup{}
+	wg.Add(len(logs))
+
+	logFeatureEntries := make([]LogFeatureEntry, len(logs))
+	for i, log := range logs {
+		go func(i int, log LogEntry) {
+			defer wg.Done()
+
+			logFeatureEntries[i] = LogFeatureEntry{
+				UserID:         log.UserID,
+				LogTime:        log.LogTime,
+				LoginIP:        log.LoginIP,
+				City:           log.City,
+				ISP:            log.ISP,
+				BrowserName:    log.BrowserName,
+				BrowserVersion: log.BrowserVersion,
+				OSName:         log.OSName,
+				OSVersion:      log.OSVersion,
+				DeviceType:     log.DeviceType,
+			}
+		}(i, log)
+	}
+
+	wg.Wait()
+	return logFeatureEntries
+}
+
 func processChunk(lines [][]string, wg *sync.WaitGroup, results chan<- LogEntry, errors chan<- error) {
 	defer wg.Done()
 	for _, line := range lines {
@@ -103,35 +141,29 @@ func processChunk(lines [][]string, wg *sync.WaitGroup, results chan<- LogEntry,
 func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open log file: %v", err)
 	}
 	defer file.Close()
-
-	// fmt.Println("Reading file...", filePath)
 
 	reader := csv.NewReader(file)
 	reader.FieldsPerRecord = -1 // Allow variable fields
 
-	// Read header
 	if record, err := reader.Read(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read header: %v", err)
 	} else {
 		fmt.Println("Header:", record)
 	}
 
-	// Setup channels and wait group
 	results := make(chan LogEntry)
 	errors := make(chan error)
 	var wg sync.WaitGroup
 
-	// scanner := bufio.NewScanner(file)
 	chunkSize := 1000
 	var chunk [][]string
 
-	// ? Will the ReadAll() function read the entire file into memory? Is it a good idea? Expensive?
 	alllogs, err := reader.ReadAll()
 	if err != nil {
-		log.Fatalf("Error reading logs: %v", err)
+		return nil, fmt.Errorf("failed to read all logs: %v", err)
 	}
 
 	for _, line := range alllogs {
@@ -144,7 +176,6 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 		}
 	}
 
-	// Process the last chunk
 	if len(chunk) > 0 {
 		wg.Add(1)
 		go processChunk(chunk, &wg, results, errors)
@@ -157,24 +188,12 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	}()
 
 	var logs []LogEntry
-	for {
-		select {
-		case entry, ok := <-results:
-			if !ok {
-				results = nil
-			} else {
-				logs = append(logs, entry)
-			}
-		case err, ok := <-errors:
-			if !ok {
-				errors = nil
-			} else {
-				return nil, err
-			}
-		}
-		if results == nil && errors == nil {
-			break
-		}
+	for entry := range results {
+		logs = append(logs, entry)
+	}
+
+	if err, ok := <-errors; ok {
+		return nil, fmt.Errorf("error processing logs: %v", err)
 	}
 
 	return logs, nil
@@ -209,7 +228,7 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 	browserName, browserVersion := ua.Browser()
 	osName := ua.OSInfo().Name
 	osVersion := ua.OSInfo().Version
-	deviceType := utils.DetermineDeviceType(attempt[12])
+	deviceType := getDeviceType(attempt[12])
 
 	return LoginAttempt{
 		UserID:                utils.CleanString(attempt[0]),
@@ -231,4 +250,48 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 		OSVersion:             osVersion,
 		DeviceType:            deviceType,
 	}, nil
+}
+
+func PrepareLogFeatures(logs []LogEntry) []LogFeatureEntry {
+	return extractFeatures(logs)
+}
+
+func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
+	return LogAttemptVector{
+		UserID:         attempt.UserID,
+		LogTime:        attempt.LogTime,
+		LoginIP:        attempt.LoginIP,
+		City:           attempt.City,
+		ISP:            attempt.ISP,
+		BrowserName:    attempt.BrowserName,
+		BrowserVersion: attempt.BrowserVersion,
+		OSName:         attempt.OSName,
+		OSVersion:      attempt.OSVersion,
+		DeviceType:     attempt.DeviceType,
+	}
+}
+
+func String2LogAttemptVector(log string) LogAttemptVector {
+	fields := strings.Split(log, ",")
+
+	logTime, _ := time.Parse("2006-01-02 15:04", fields[1])
+
+	ua := useragent.New(fields[12])
+	browserName, browserVersion := ua.Browser()
+	osName := ua.OSInfo().Name
+	osVersion := ua.OSInfo().Version
+	deviceType := getDeviceType(fields[12])
+
+	return LogAttemptVector{
+		UserID:         fields[0],
+		LogTime:        logTime,
+		LoginIP:        fields[4],
+		City:           fields[8],
+		ISP:            fields[9],
+		BrowserName:    browserName,
+		BrowserVersion: browserVersion,
+		OSName:         osName,
+		OSVersion:      osVersion,
+		DeviceType:     deviceType,
+	}
 }

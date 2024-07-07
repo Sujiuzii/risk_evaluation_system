@@ -1,32 +1,43 @@
 package config
 
 import (
-    "encoding/json"
-    "os"
+	"encoding/json"
+	"fmt"
+	"os"
 )
 
+type IPConfig struct {
+	LoginIP float64 `json:"LoginIP"`
+	ISP     float64 `json:"ISP"`
+	City    float64 `json:"City"`
+}
+
+type UAConfig struct {
+	BrowserNameandVersion         float64 `json:"BrowserNameandVersion"`
+	OperatingSystemNameandVersion float64 `json:"OperatingSystemNameandVersion"`
+	DeviceType                    float64 `json:"DeviceType"`
+}
+
 type Config struct {
-    IPWeight       float64 `json:"ip_weight"`
-    UAWeight       float64 `json:"ua_weight"`
-    OSWeight       float64 `json:"os_weight"`
-    DeviceWeight   float64 `json:"device_weight"`
-    BrowserWeight  float64 `json:"browser_weight"`
-    OtherWeights map[string]float64 `json:"other_weights"`
+	IP              IPConfig `json:"ip"`
+	UA              UAConfig `json:"ua"`
+	SmoothingFactor float64  `json:"smoothing_factor"`
+	Threshold       float64  `json:"threshold"`
 }
 
-func LoadConfig(filePath string) (*Config, error) {
-    file, err := os.Open(filePath)
-    if err != nil {
-        return nil, err
-    }
-    defer file.Close()
+var Configuration Config
 
-    var config Config
-    decoder := json.NewDecoder(file)
-    if err := decoder.Decode(&config); err != nil {
-        return nil, err
-    }
+func LoadConfig(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Printf("Error opening config file: %v\n", err)
+		return
+	}
+	defer file.Close()
 
-    return &config, nil
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&Configuration)
+	if err != nil {
+		fmt.Printf("Error parsing config file: %v\n", err)
+	}
 }
-
