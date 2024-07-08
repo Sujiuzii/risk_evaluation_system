@@ -2,42 +2,60 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 )
 
-type IPConfig struct {
+type IPWeight struct {
 	LoginIP float64 `json:"LoginIP"`
 	ISP     float64 `json:"ISP"`
 	City    float64 `json:"City"`
 }
 
-type UAConfig struct {
-	BrowserNameandVersion         float64 `json:"BrowserNameandVersion"`
-	OperatingSystemNameandVersion float64 `json:"OperatingSystemNameandVersion"`
-	DeviceType                    float64 `json:"DeviceType"`
+type UAWeight struct {
+	BrowserNameandVersion         float64 `json:"Browser"`
+	OperatingSystemNameandVersion float64 `json:"OS"`
+	DeviceType                    float64 `json:"Device"`
+}
+
+type Weights struct {
+	IPWeight IPWeight `json:"ipweights"`
+	UAWeight UAWeight `json:"uaweights"`
+}
+
+type SmoothingFactor struct {
+	IPFactor         float64 `json:"IPunseen"`
+	ISPFactor        float64 `json:"ISPunseen"`
+	CityFactor       float64 `json:"Cityunseen"`
+	BrowserFactor    float64 `json:"Browserunseen"`
+	OSFactor         float64 `json:"OSunseen"`
+	DeviceTypeFactor float64 `json:"Deviceunseen"`
+}
+
+type FeatureWeights struct {
+	IPWeight float64 `json:"ipweight"`
+	UAWeight float64 `json:"uaweight"`
 }
 
 type Config struct {
-	IP              IPConfig `json:"ip"`
-	UA              UAConfig `json:"ua"`
-	SmoothingFactor float64  `json:"smoothing_factor"`
-	Threshold       float64  `json:"threshold"`
+	FeatureWeights   FeatureWeights  `json:"featureweights"`
+	Weights          Weights         `json:"weights"`
+	SmoothingFactors SmoothingFactor `json:"smoothingfactors"`
 }
 
 var Configuration Config
 
-func LoadConfig(filename string) {
+func LoadConfig(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		fmt.Printf("Error opening config file: %v\n", err)
-		return
+		return err
 	}
 	defer file.Close()
 
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&Configuration)
 	if err != nil {
-		fmt.Printf("Error parsing config file: %v\n", err)
+		return err
 	}
+
+	return nil
 }

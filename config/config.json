@@ -1,13 +1,26 @@
 {
-    "ip": {
-        "LoginIP": 0.6,
-        "ISP": 0.3,
-        "City": 0.1
+    "featureweights": {
+        "ipweight": 0.6,
+        "uaweight": 0.4
     },
-    "ua": {
-        "BrowserNameandVersion": 0.7,
-        "OperatingSystemNameandVersion": 0.2,
-        "DeviceType": 0.1
+    "weights": {
+        "ipweights": {
+            "LoginIP": 0.6,
+            "ISP": 0.3,
+            "City": 0.1
+        },
+        "uaweights": {
+            "Browser": 0.3,
+            "OS": 0.3,
+            "Device": 0.4
+        }
+    },
+    "smoothingfactors": {
+        "IPunseen": 50,
+        "ISPunseen": 10,
+        "Cityunseen": 1,
+        "Browserunseen": 3,
+        "OSunseen": 2,
+        "Deviceunseen": 5
     }
 }
-

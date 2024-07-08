@@ -139,6 +139,11 @@ func processChunk(lines [][]string, wg *sync.WaitGroup, results chan<- LogEntry,
 }
 
 func PreprocessLogs(filePath string) ([]LogEntry, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		fmt.Printf("Log processing execution time: %s\n", duration)
+	}()
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %v", err)
