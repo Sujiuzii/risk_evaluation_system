@@ -1,3 +1,7 @@
+// Description: Package main connects the preprocessing and risk packages to the risk evaluation system.
+//
+// pass the parameters in the command line
+// this package can be used to analyze time consumption of the system
 package main
 
 import (
@@ -10,6 +14,7 @@ import (
 )
 
 func main() {
+	// Parse the command line arguments
 	logFilePath := flag.String("log-file", "data/example_log.csv", "Path to the log file")
 	newAttemptFilePath := flag.String("attempt-file", "data/new_attempt.csv", "Path to the new login attempt file")
 	flag.Parse()

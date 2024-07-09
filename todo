@@ -1,0 +1,16 @@
+- get subfeature weights
+- get feature importances
+- consider ip reputation
+- better the performance by reconsider the chunk size or goroutine #
+- consider the time of the day, day of the week, etc.
+- reconstruct smoothing part
+
+* add intermediate storage for the preprocessing part(interfaces)
+* discuss for future improvements
+
++ better performance of the risk part
++ better performance of the preprocessing part
++ main frame of the system
++ configuration parser
++ tests for preprocessing
++ tests for risk(subjective objection)

@@ -1,3 +1,9 @@
+// Description: Package preprocessing contains the functions for preprocessing the log entries and login attempts.
+//
+// The PreprocessLogs function reads the log file and preprocesses the log entries.
+// The LoadNewLoginAttempt function loads a new login attempt from a file.
+//
+// Goroutines are used to process the log entries in parallel.
 package preprocessing
 
 import (
@@ -51,8 +57,11 @@ type LogFeatureEntry struct {
 
 // LoginAttempt represents a single login attempt.
 type LoginAttempt LogEntry
+
+// LogAttemptVector represents a single login attempt with extracted partial features.
 type LogAttemptVector LogFeatureEntry
 
+// parse the log entry from a CSV record
 func parseLogEntry(record []string) (LogEntry, error) {
 	logTime, err := time.Parse("2006-01-02 15:04", record[2])
 	if err != nil {
@@ -99,6 +108,7 @@ func getDeviceType(uA string) string {
 	}
 }
 
+// extract partial features from the log entries
 func extractFeatures(logs []LogEntry) []LogFeatureEntry {
 	wg := sync.WaitGroup{}
 	wg.Add(len(logs))
@@ -138,6 +148,7 @@ func processChunk(lines [][]string, wg *sync.WaitGroup, results chan<- LogEntry,
 	}
 }
 
+// read the log file and preprocess the log entries
 func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	start := time.Now()
 	defer func() {
@@ -163,6 +174,8 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	errors := make(chan error)
 	var wg sync.WaitGroup
 
+	// ? think twice on the chunksize
+	// ? what about moving to exact number of goroutines
 	chunkSize := 1000
 	var chunk [][]string
 
@@ -204,6 +217,7 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	return logs, nil
 }
 
+// load new login attempt from a new file
 func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -261,6 +275,7 @@ func PrepareLogFeatures(logs []LogEntry) []LogFeatureEntry {
 	return extractFeatures(logs)
 }
 
+// ? redundant implementation
 func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
 	return LogAttemptVector{
 		UserID:         attempt.UserID,
@@ -276,6 +291,7 @@ func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
 	}
 }
 
+// ? unused function
 func String2LogAttemptVector(log string) LogAttemptVector {
 	fields := strings.Split(log, ",")
 

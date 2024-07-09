@@ -1,3 +1,10 @@
+// Description: Package risk is the core of the risk evaluation system.
+// It provides the Freeman risk scoring algorithm to evaluate the risk of a user.
+//
+// The LogChecker struct records the occurrence of each feature in the logs.
+// The Freeman function calculates the risk score of a user based on the log data.
+//
+// ! This version is weak in accuracy
 package risk
 
 import (
@@ -9,6 +16,7 @@ import (
 	"risk_evaluation_system/internal/preprocessing"
 )
 
+// record the occurrence of each feature
 type LogChecker struct {
 	ipMap             map[string]int
 	ispMap            map[string]int
@@ -22,6 +30,7 @@ type LogChecker struct {
 	config            config.Config
 }
 
+// use goroutines and mutexes to count the occurrence of each feature
 func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps map[string]map[string]int, mutexes map[string]*sync.Mutex) {
 	defer wg.Done()
 
@@ -60,6 +69,7 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 	}
 }
 
+// constructor for LogChecker(expensive)
 func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) *LogChecker {
 	start := time.Now()
 	defer func() {
@@ -88,10 +98,12 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 
 	var wg sync.WaitGroup
 	n := len(logs)
-	chunks := 4 // 分块数
+
+	// TODO: consider better chunk numbers
+	chunks := 4
 	chunkSize := n / chunks
 
-	// 初始化互斥锁
+	// Initialize mutexes
 	mutexes := map[string]*sync.Mutex{
 		"ip":             &sync.Mutex{},
 		"isp":            &sync.Mutex{},
@@ -132,6 +144,7 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 // ? May need a dynamic version unseen value
 // TODO: need a recursive version
 // ? may need different version for different features
+// get the unseen value of a subfeature(fixed value for now)
 func (lc *LogChecker) GetUnseenCount(attempt preprocessing.LogAttemptVector, subfeature string, configs config.Config) (float64, error) {
 	switch subfeature {
 	case "ip":
@@ -151,8 +164,7 @@ func (lc *LogChecker) GetUnseenCount(attempt preprocessing.LogAttemptVector, sub
 	}
 }
 
-// ! reclaim for features, add a hyper function to regain all the subfeatures
-// TODO
+// get the occurrence rate of a subfeature for a user
 func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptVector, subfeature string) (float64, error) {
 	M, err := lc.GetUnseenCount(attempt, subfeature, lc.config)
 	if err != nil {
@@ -186,6 +198,9 @@ func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptV
 	return float64(count) * a, nil
 }
 
+// ? expensive for frequent calls
+// FIXME: consider to store the weights
+// parse weight from config for exact subfeature
 func checkWeight(subfeature string, feature string) (float64, error) {
 	if feature == "ip" {
 		weights := config.Configuration.Weights.IPWeight
@@ -218,12 +233,16 @@ func checkWeight(subfeature string, feature string) (float64, error) {
 	}
 }
 
+// ! bad implementation
+// FIXME: merge with GetOccurrenceRateUserSub
+// get the occurrence rate of a subfeature globally
 func (lc *LogChecker) GetOccurrenceRateGlobalSub(attempt preprocessing.LogAttemptVector, subfeature string, logs []preprocessing.LogFeatureEntry) (float64, error) {
 	logChecker := NewLogChecker(logs, lc.config)
 
 	return logChecker.GetOccurrenceRateUserSub(attempt, subfeature)
 }
 
+// check occurrence rate for subfeatures and weight them into a single value
 func (lc *LogChecker) GetOccurrenceRateUser(attempt preprocessing.LogAttemptVector, feature string) (float64, error) {
 	subfeatures, ok := config.Features[feature]
 	if !ok {
@@ -247,6 +266,9 @@ func (lc *LogChecker) GetOccurrenceRateUser(attempt preprocessing.LogAttemptVect
 	return result, nil
 }
 
+// ! bad implementation
+// FIXME: merge with GetOccurrenceRateUser
+// get the occurrence rate of a feature globally
 func (lc *LogChecker) GetOccurrenceRateGlobal(attempt preprocessing.LogAttemptVector, feature string, logs []preprocessing.LogFeatureEntry) (float64, error) {
 	subfeatures, ok := config.Features[feature]
 	if !ok {
@@ -270,6 +292,7 @@ func (lc *LogChecker) GetOccurrenceRateGlobal(attempt preprocessing.LogAttemptVe
 	return result, nil
 }
 
+// check the userID occurrence rate in all logs
 func (lc *LogChecker) GetUserOccurrenceRate(logs []preprocessing.LogFeatureEntry) (float64, error) {
 	if len(logs) == 0 {
 		return 0, fmt.Errorf("empty log checker")
@@ -277,9 +300,11 @@ func (lc *LogChecker) GetUserOccurrenceRate(logs []preprocessing.LogFeatureEntry
 	return float64(lc.totalCount) / float64(len(logs)), nil
 }
 
-// TODO: double check needed
+// filter logs by userID
 func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []preprocessing.LogFeatureEntry {
 	var wg sync.WaitGroup
+
+	// TODO: consider better chunk numbers
 	numWorkers := 4
 	chunkSize := (len(logs) + numWorkers - 1) / numWorkers
 
@@ -316,14 +341,18 @@ func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []p
 	return userLogs
 }
 
-// ! rewrite for feature hierarchy
-// TODO
+// ! poor implementation
+// TODO: weight every feature differently
+// TODO: consider involving the ip reputation system and something in
+// TODO: better the performance by merging the log checkers
+// TODO: more features needed
+// Freeman risk scoring algorithm
 func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start)
-		fmt.Printf("Risk scoring time: %s\n", duration)
-	}()
+	// start := time.Now()
+	// defer func() {
+	// 	duration := time.Since(start)
+	// 	fmt.Printf("Risk scoring time: %s\n", duration)
+	// }()
 	userID := attempt.UserID
 
 	userLogs := filterLogsByUserID(userID, logs)
@@ -340,6 +369,7 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 	}
 
 	// ! no login history, need double check
+	// BUG: bad for first time login
 	if puL == 0 {
 		return 0, fmt.Errorf("empty log checker")
 	}
@@ -354,11 +384,11 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 	// rateCh := make(chan rateResult, len(features))
 	rateCh := make(chan rateResult, len(config.Features))
 	var wg sync.WaitGroup
-	start2 := time.Now()
-	defer func() {
-		duration := time.Since(start2)
-		fmt.Printf("Function execution time: %s\n", duration)
-	}()
+	// start2 := time.Now()
+	// defer func() {
+	// 	duration := time.Since(start2)
+	// 	fmt.Printf("Function execution time: %s\n", duration)
+	// }()
 
 	for feature := range config.Features {
 		wg.Add(1)

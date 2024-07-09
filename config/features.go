@@ -1,12 +1,8 @@
+// Description: This file contains the features that can be used to
 package config
 
-// var Features = [][]string{
-// 	{"LoginIP", "ISP", "City"},
-// 	{"BrowserName", "BrowserVersion"},
-// 	{"OSName", "OSVersion"},
-// 	{"DeviceType"},
-// }
-
+// TODO: Add more features, and reconstruct the features to use
+// features to use
 var Features = map[string][]string{
 	"ip": {"ip", "isp", "city"},
 	"ua": {"browser", "os", "device"},
