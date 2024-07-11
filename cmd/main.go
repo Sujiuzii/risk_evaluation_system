@@ -23,21 +23,21 @@ func main() {
 	if err := config.LoadConfig("config/config.json"); err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
-	fmt.Printf("Configuration loaded: %+v\n", config.Configuration)
+	// fmt.Printf("Configuration loaded: %+v\n", config.Configuration)
 
 	// Preprocess the logs
 	logs, err := preprocessing.PreprocessLogs(*logFilePath)
 	if err != nil {
 		log.Fatalf("Error preprocessing logs: %v", err)
 	}
-	fmt.Printf("Processed %d log entries.\n", len(logs))
+	// fmt.Printf("Processed %d log entries.\n", len(logs))
 
 	// Load the new login attempt
 	attempt, err := preprocessing.LoadNewLoginAttempt(*newAttemptFilePath)
 	if err != nil {
 		log.Fatalf("Error loading new login attempt: %v", err)
 	}
-	fmt.Printf("New login attempt: %+v\n", attempt)
+	// fmt.Printf("New login attempt: %+v\n", attempt)
 
 	attemptvec := preprocessing.GetLoginAttemptVector(attempt)
 	logsf := preprocessing.PrepareLogFeatures(logs)

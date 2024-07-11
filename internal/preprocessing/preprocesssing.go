@@ -8,9 +8,9 @@ package preprocessing
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -39,20 +39,31 @@ type LogEntry struct {
 	OSName                string
 	OSVersion             string
 	DeviceType            string
+	Fonts                 string
+	DeviceMemory          int
+	HardwareConcurrency   int
+	Timezone              string
+	CpuClass              string
+	Platform              string
 }
 
 // LogFeatureEntry represents a single log entry with extracted partial features.
 type LogFeatureEntry struct {
-	UserID         string
-	LogTime        time.Time
-	LoginIP        string
-	City           string
-	ISP            string
-	BrowserName    string
-	BrowserVersion string
-	OSName         string
-	OSVersion      string
-	DeviceType     string
+	UserID              string
+	LogTime             time.Time
+	LoginIP             string
+	Region              string
+	ISP                 string
+	BrowserName         string
+	BrowserVersion      string
+	OSName              string
+	OSVersion           string
+	Fonts               string
+	DeviceMemory        int
+	HardwareConcurrency int
+	Timezone            string
+	CpuClass            string
+	Platform            string
 }
 
 // LoginAttempt represents a single login attempt.
@@ -61,6 +72,27 @@ type LoginAttempt LogEntry
 // LogAttemptVector represents a single login attempt with extracted partial features.
 type LogAttemptVector LogFeatureEntry
 
+// browser fingerprint
+type BrowserFingerprint struct {
+	Fonts               string `json:"fonts,omitempty"`
+	DeviceMemory        int    `json:"deviceMemory,omitempty"`
+	HardwareConcurrency int    `json:"hardwareConcurrency,omitempty"`
+	Timezone            string `json:"timezone,omitempty"`
+	CpuClass            string `json:"cpuClass,omitempty"`
+	Platform            string `json:"platform,omitempty"`
+}
+
+func parseBrowserfingerprint(jsonStr string) (BrowserFingerprint, error) {
+	var fingerprint BrowserFingerprint
+
+	jsonStr = fmt.Sprintf("{%s}", jsonStr)
+
+	err := json.Unmarshal([]byte(jsonStr), &fingerprint)
+	// fmt.Println(jsonStr)
+	// fmt.Printf("Parsed Browser Fingerprint: %+v\n", fingerprint)
+	return fingerprint, err
+}
+
 // parse the log entry from a CSV record
 func parseLogEntry(record []string) (LogEntry, error) {
 	logTime, err := time.Parse("2006-01-02 15:04", record[2])
@@ -68,10 +100,21 @@ func parseLogEntry(record []string) (LogEntry, error) {
 		return LogEntry{}, fmt.Errorf("failed to parse log time: %v", err)
 	}
 
+	// fix the problem of bad ip addressing
+	city := utils.CleanString(record[8])
+	if city == "蓉城" {
+		city = "合肥"
+	}
+
 	ua := useragent.New(record[12])
 	browserName, browserVersion := ua.Browser()
 	osName, osVersion := ua.OSInfo().Name, ua.OSInfo().Version
 	deviceType := getDeviceType(record[12])
+
+	fingerprint, _ := parseBrowserfingerprint(record[5])
+	// if err != nil {
+	// 	return LogEntry{}, fmt.Errorf("failed to parse browser fingerprint: %v", err)
+	// }
 
 	return LogEntry{
 		UserID:                utils.CleanString(record[0]),
@@ -82,7 +125,7 @@ func parseLogEntry(record []string) (LogEntry, error) {
 		BrowserFingerprinting: utils.CleanString(record[5]),
 		Country:               utils.CleanString(record[6]),
 		RegionName:            utils.CleanString(record[7]),
-		City:                  utils.CleanString(record[8]),
+		City:                  city,
 		ISP:                   utils.CleanString(record[9]),
 		Org:                   utils.CleanString(record[10]),
 		AS:                    utils.CleanString(record[11]),
@@ -92,6 +135,12 @@ func parseLogEntry(record []string) (LogEntry, error) {
 		OSName:                osName,
 		OSVersion:             osVersion,
 		DeviceType:            deviceType,
+		Fonts:                 fingerprint.Fonts,
+		DeviceMemory:          fingerprint.DeviceMemory,
+		HardwareConcurrency:   fingerprint.HardwareConcurrency,
+		Timezone:              fingerprint.Timezone,
+		CpuClass:              fingerprint.CpuClass,
+		Platform:              fingerprint.Platform,
 	}, nil
 }
 
@@ -119,16 +168,21 @@ func extractFeatures(logs []LogEntry) []LogFeatureEntry {
 			defer wg.Done()
 
 			logFeatureEntries[i] = LogFeatureEntry{
-				UserID:         log.UserID,
-				LogTime:        log.LogTime,
-				LoginIP:        log.LoginIP,
-				City:           log.City,
-				ISP:            log.ISP,
-				BrowserName:    log.BrowserName,
-				BrowserVersion: log.BrowserVersion,
-				OSName:         log.OSName,
-				OSVersion:      log.OSVersion,
-				DeviceType:     log.DeviceType,
+				UserID:              log.UserID,
+				LogTime:             log.LogTime,
+				LoginIP:             log.LoginIP,
+				Region:              log.RegionName,
+				ISP:                 log.ISP,
+				BrowserName:         log.BrowserName,
+				BrowserVersion:      log.BrowserVersion,
+				OSName:              log.OSName,
+				OSVersion:           log.OSVersion,
+				Fonts:               log.Fonts,
+				DeviceMemory:        log.DeviceMemory,
+				HardwareConcurrency: log.HardwareConcurrency,
+				Timezone:            log.Timezone,
+				CpuClass:            log.CpuClass,
+				Platform:            log.Platform,
 			}
 		}(i, log)
 	}
@@ -164,10 +218,8 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	reader := csv.NewReader(file)
 	reader.FieldsPerRecord = -1 // Allow variable fields
 
-	if record, err := reader.Read(); err != nil {
+	if _, err := reader.Read(); err != nil {
 		return nil, fmt.Errorf("failed to read header: %v", err)
-	} else {
-		fmt.Println("Header:", record)
 	}
 
 	results := make(chan LogEntry)
@@ -219,10 +271,10 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 
 // load new login attempt from a new file
 func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return LoginAttempt{}, err
-	}
+	file, _ := os.Open(filePath)
+	// if err != nil {
+	// 	return LoginAttempt{}, err
+	// }
 	defer file.Close()
 
 	reader := csv.NewReader(file)
@@ -248,6 +300,15 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 	osName := ua.OSInfo().Name
 	osVersion := ua.OSInfo().Version
 	deviceType := getDeviceType(attempt[12])
+	fingerprint, err := parseBrowserfingerprint(attempt[5])
+	if err != nil {
+		return LoginAttempt{}, err
+	}
+
+	city := utils.CleanString(attempt[8])
+	if city == "蓉城" {
+		city = "合肥"
+	}
 
 	return LoginAttempt{
 		UserID:                utils.CleanString(attempt[0]),
@@ -258,7 +319,7 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 		BrowserFingerprinting: utils.CleanString(attempt[5]),
 		Country:               utils.CleanString(attempt[6]),
 		RegionName:            utils.CleanString(attempt[7]),
-		City:                  utils.CleanString(attempt[8]),
+		City:                  city,
 		ISP:                   utils.CleanString(attempt[9]),
 		Org:                   utils.CleanString(attempt[10]),
 		AS:                    utils.CleanString(attempt[11]),
@@ -268,6 +329,12 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 		OSName:                osName,
 		OSVersion:             osVersion,
 		DeviceType:            deviceType,
+		Fonts:                 fingerprint.Fonts,
+		DeviceMemory:          fingerprint.DeviceMemory,
+		HardwareConcurrency:   fingerprint.HardwareConcurrency,
+		Timezone:              fingerprint.Timezone,
+		CpuClass:              fingerprint.CpuClass,
+		Platform:              fingerprint.Platform,
 	}, nil
 }
 
@@ -278,41 +345,46 @@ func PrepareLogFeatures(logs []LogEntry) []LogFeatureEntry {
 // ? redundant implementation
 func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
 	return LogAttemptVector{
-		UserID:         attempt.UserID,
-		LogTime:        attempt.LogTime,
-		LoginIP:        attempt.LoginIP,
-		City:           attempt.City,
-		ISP:            attempt.ISP,
-		BrowserName:    attempt.BrowserName,
-		BrowserVersion: attempt.BrowserVersion,
-		OSName:         attempt.OSName,
-		OSVersion:      attempt.OSVersion,
-		DeviceType:     attempt.DeviceType,
+		UserID:              attempt.UserID,
+		LogTime:             attempt.LogTime,
+		LoginIP:             attempt.LoginIP,
+		Region:              attempt.RegionName,
+		ISP:                 attempt.ISP,
+		BrowserName:         attempt.BrowserName,
+		BrowserVersion:      attempt.BrowserVersion,
+		OSName:              attempt.OSName,
+		OSVersion:           attempt.OSVersion,
+		Fonts:               attempt.Fonts,
+		DeviceMemory:        attempt.DeviceMemory,
+		HardwareConcurrency: attempt.HardwareConcurrency,
+		Timezone:            attempt.Timezone,
+		CpuClass:            attempt.CpuClass,
+		Platform:            attempt.Platform,
 	}
 }
 
-// ? unused function
-func String2LogAttemptVector(log string) LogAttemptVector {
-	fields := strings.Split(log, ",")
+// // ? unused function
+// func String2LogAttemptVector(log string) LogAttemptVector {
+// 	fields := strings.Split(log, ",")
 
-	logTime, _ := time.Parse("2006-01-02 15:04", fields[1])
+// 	logTime, _ := time.Parse("2006-01-02 15:04", fields[1])
 
-	ua := useragent.New(fields[12])
-	browserName, browserVersion := ua.Browser()
-	osName := ua.OSInfo().Name
-	osVersion := ua.OSInfo().Version
-	deviceType := getDeviceType(fields[12])
+// 	ua := useragent.New(fields[12])
+// 	browserName, browserVersion := ua.Browser()
+// 	osName := ua.OSInfo().Name
+// 	osVersion := ua.OSInfo().Version
+// 	deviceType := getDeviceType(fields[12])
 
-	return LogAttemptVector{
-		UserID:         fields[0],
-		LogTime:        logTime,
-		LoginIP:        fields[4],
-		City:           fields[8],
-		ISP:            fields[9],
-		BrowserName:    browserName,
-		BrowserVersion: browserVersion,
-		OSName:         osName,
-		OSVersion:      osVersion,
-		DeviceType:     deviceType,
-	}
-}
+// 	return LogAttemptVector{
+// 		UserID:         fields[0],
+// 		LogTime:        logTime,
+// 		LoginIP:        fields[4],
+// 		City:           fields[8],
+// 		ISP:            fields[9],
+// 		BrowserName:    browserName,
+// 		BrowserVersion: browserVersion,
+// 		OSName:         osName,
+// 		OSVersion:      osVersion,
+// 		DeviceType:     deviceType,
+// 	}
+// }

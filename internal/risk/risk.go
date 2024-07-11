@@ -9,6 +9,8 @@ package risk
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,16 +20,21 @@ import (
 
 // record the occurrence of each feature
 type LogChecker struct {
-	ipMap             map[string]int
-	ispMap            map[string]int
-	cityMap           map[string]int
-	browserNameMap    map[string]int
-	browserVersionMap map[string]int
-	osNameMap         map[string]int
-	osVersionMap      map[string]int
-	deviceTypeMap     map[string]int
-	totalCount        int
-	config            config.Config
+	ipMap                  map[string]int
+	ispMap                 map[string]int
+	regionMap              map[string]int
+	browserNameMap         map[string]int
+	browserVersionMap      map[string]int
+	osNameMap              map[string]int
+	osVersionMap           map[string]int
+	fontsMap               map[string]int
+	deviceMemoryMap        map[string]int
+	hardwareConcurrencyMap map[string]int
+	timezoneMap            map[string]int
+	cpuClassMap            map[string]int
+	platformMap            map[string]int
+	totalCount             int
+	config                 config.Config
 }
 
 // use goroutines and mutexes to count the occurrence of each feature
@@ -43,9 +50,9 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 		maps["isp"][log.ISP]++
 		mutexes["isp"].Unlock()
 
-		mutexes["city"].Lock()
-		maps["city"][log.City]++
-		mutexes["city"].Unlock()
+		mutexes["region"].Lock()
+		maps["region"][log.Region]++
+		mutexes["region"].Unlock()
 
 		mutexes["browserName"].Lock()
 		maps["browserName"][log.BrowserName]++
@@ -63,9 +70,29 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 		maps["osVersion"][log.OSVersion]++
 		mutexes["osVersion"].Unlock()
 
-		mutexes["deviceType"].Lock()
-		maps["deviceType"][log.DeviceType]++
-		mutexes["deviceType"].Unlock()
+		mutexes["fonts"].Lock()
+		maps["fonts"][log.Fonts]++
+		mutexes["fonts"].Unlock()
+
+		mutexes["deviceMemory"].Lock()
+		maps["deviceMemory"][strconv.Itoa(log.DeviceMemory)]++
+		mutexes["deviceMemory"].Unlock()
+
+		mutexes["hardwareConcurrency"].Lock()
+		maps["hardwareConcurrency"][strconv.Itoa(log.HardwareConcurrency)]++
+		mutexes["hardwareConcurrency"].Unlock()
+
+		mutexes["timezone"].Lock()
+		maps["timezone"][log.Timezone]++
+		mutexes["timezone"].Unlock()
+
+		mutexes["cpuClass"].Lock()
+		maps["cpuClass"][log.CpuClass]++
+		mutexes["cpuClass"].Unlock()
+
+		mutexes["platform"].Lock()
+		maps["platform"][log.Platform]++
+		mutexes["platform"].Unlock()
 	}
 }
 
@@ -78,22 +105,32 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 	}()
 	ipMap := make(map[string]int)
 	ispMap := make(map[string]int)
-	cityMap := make(map[string]int)
+	regionMap := make(map[string]int)
 	browserNameMap := make(map[string]int)
 	browserVersionMap := make(map[string]int)
 	osNameMap := make(map[string]int)
 	osVersionMap := make(map[string]int)
-	deviceTypeMap := make(map[string]int)
+	fontsMap := make(map[string]int)
+	deviceMemoryMap := make(map[string]int)
+	hardwareConcurrencyMap := make(map[string]int)
+	timezoneMap := make(map[string]int)
+	cpuClassMap := make(map[string]int)
+	platformMap := make(map[string]int)
 
 	maps := map[string]map[string]int{
-		"ip":             ipMap,
-		"isp":            ispMap,
-		"city":           cityMap,
-		"browserName":    browserNameMap,
-		"browserVersion": browserVersionMap,
-		"osName":         osNameMap,
-		"osVersion":      osVersionMap,
-		"deviceType":     deviceTypeMap,
+		"ip":                  ipMap,
+		"isp":                 ispMap,
+		"region":              regionMap,
+		"browserName":         browserNameMap,
+		"browserVersion":      browserVersionMap,
+		"osName":              osNameMap,
+		"osVersion":           osVersionMap,
+		"fonts":               fontsMap,
+		"deviceMemory":        deviceMemoryMap,
+		"hardwareConcurrency": hardwareConcurrencyMap,
+		"timezone":            timezoneMap,
+		"cpuClass":            cpuClassMap,
+		"platform":            platformMap,
 	}
 
 	var wg sync.WaitGroup
@@ -105,14 +142,19 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 
 	// Initialize mutexes
 	mutexes := map[string]*sync.Mutex{
-		"ip":             &sync.Mutex{},
-		"isp":            &sync.Mutex{},
-		"city":           &sync.Mutex{},
-		"browserName":    &sync.Mutex{},
-		"browserVersion": &sync.Mutex{},
-		"osName":         &sync.Mutex{},
-		"osVersion":      &sync.Mutex{},
-		"deviceType":     &sync.Mutex{},
+		"ip":                  &sync.Mutex{},
+		"isp":                 &sync.Mutex{},
+		"region":              &sync.Mutex{},
+		"browserName":         &sync.Mutex{},
+		"browserVersion":      &sync.Mutex{},
+		"osName":              &sync.Mutex{},
+		"osVersion":           &sync.Mutex{},
+		"fonts":               &sync.Mutex{},
+		"deviceMemory":        &sync.Mutex{},
+		"hardwareConcurrency": &sync.Mutex{},
+		"timezone":            &sync.Mutex{},
+		"cpuClass":            &sync.Mutex{},
+		"platform":            &sync.Mutex{},
 	}
 
 	for i := 0; i < chunks; i++ {
@@ -128,37 +170,83 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 	wg.Wait()
 
 	return &LogChecker{
-		ipMap:             ipMap,
-		ispMap:            ispMap,
-		cityMap:           cityMap,
-		browserNameMap:    browserNameMap,
-		browserVersionMap: browserVersionMap,
-		osNameMap:         osNameMap,
-		osVersionMap:      osVersionMap,
-		deviceTypeMap:     deviceTypeMap,
-		totalCount:        n,
-		config:            configs,
+		ipMap:                  ipMap,
+		ispMap:                 ispMap,
+		regionMap:              regionMap,
+		browserNameMap:         browserNameMap,
+		browserVersionMap:      browserVersionMap,
+		osNameMap:              osNameMap,
+		osVersionMap:           osVersionMap,
+		fontsMap:               fontsMap,
+		deviceMemoryMap:        deviceMemoryMap,
+		hardwareConcurrencyMap: hardwareConcurrencyMap,
+		timezoneMap:            timezoneMap,
+		cpuClassMap:            cpuClassMap,
+		platformMap:            platformMap,
+		totalCount:             n,
+		config:                 configs,
 	}
 }
 
-// ? May need a dynamic version unseen value
-// TODO: need a recursive version
-// ? may need different version for different features
+func (lc *LogChecker) getUnseenIp() float64 {
+	knownCities := float64(len(lc.ipMap))
+	knownISPs := float64(len(lc.ispMap))
+
+	unseenCities := lc.config.SmoothingFactors.RegionFactor
+	unseenISPs := lc.config.SmoothingFactors.ISPFactor
+	unseenIPs := lc.config.SmoothingFactors.IPFactor
+
+	return ((unseenCities+knownCities)*unseenISPs + knownISPs) * unseenIPs
+}
+
+func (lc *LogChecker) getUnseenIsp() float64 {
+	knownCities := float64(len(lc.regionMap))
+
+	unseenCities := lc.config.SmoothingFactors.RegionFactor
+	unseenISPs := lc.config.SmoothingFactors.ISPFactor
+
+	return (unseenCities + knownCities) * unseenISPs
+}
+
+func (lc *LogChecker) getUnseenCity() float64 {
+	return lc.config.SmoothingFactors.RegionFactor
+}
+
+func (lc *LogChecker) getUnseenforIPSubfeature(subfeature string) (float64, error) {
+	if subfeature == "ip" {
+		return lc.getUnseenIp(), nil
+	} else if subfeature == "isp" {
+		return lc.getUnseenIsp(), nil
+	} else if subfeature == "region" {
+		return lc.getUnseenCity(), nil
+	} else {
+		return 0, fmt.Errorf("unknown subfeature: %s", subfeature)
+	}
+
+}
+
+// TODO: different for ip and other features
 // get the unseen value of a subfeature(fixed value for now)
-func (lc *LogChecker) GetUnseenCount(attempt preprocessing.LogAttemptVector, subfeature string, configs config.Config) (float64, error) {
+func (lc *LogChecker) getUnseenCount(subfeature string) (float64, error) {
 	switch subfeature {
-	case "ip":
-		return configs.SmoothingFactors.IPFactor, nil
-	case "isp":
-		return configs.SmoothingFactors.ISPFactor, nil
-	case "city":
-		return configs.SmoothingFactors.CityFactor, nil
+	case "ip", "isp", "region":
+		return lc.getUnseenforIPSubfeature(subfeature)
 	case "browser":
-		return configs.SmoothingFactors.BrowserFactor, nil
+		return lc.config.SmoothingFactors.BrowserFactor, nil
 	case "os":
-		return configs.SmoothingFactors.OSFactor, nil
-	case "device":
-		return configs.SmoothingFactors.DeviceTypeFactor, nil
+		return lc.config.SmoothingFactors.OSFactor, nil
+	case "fonts":
+		return lc.config.SmoothingFactors.FontsFactor, nil
+	case "deviceMemory":
+		return lc.config.SmoothingFactors.DeviceMemoryFactor, nil
+	case "hardwareConcurrency":
+		return lc.config.SmoothingFactors.HardwareConcurrencyFactor, nil
+	case "timezone":
+		return lc.config.SmoothingFactors.TimezoneFactor, nil
+	case "cpuClass":
+		return lc.config.SmoothingFactors.CpuClassFactor, nil
+	case "platform":
+		return lc.config.SmoothingFactors.PlatformFactor, nil
 	default:
 		return 0, fmt.Errorf("unknown feature: %s", subfeature)
 	}
@@ -166,12 +254,12 @@ func (lc *LogChecker) GetUnseenCount(attempt preprocessing.LogAttemptVector, sub
 
 // get the occurrence rate of a subfeature for a user
 func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptVector, subfeature string) (float64, error) {
-	M, err := lc.GetUnseenCount(attempt, subfeature, lc.config)
-	if err != nil {
-		return 0, err
-	}
+	// M, err := lc.getUnseenCount(subfeature)
+	// if err != nil {
+	// 	return 0, err
+	// }
 
-	a := 1.0 / (float64(lc.totalCount) + M)
+	a := 1.0 / (float64(lc.totalCount) * 1.05)
 	var count int
 
 	switch subfeature {
@@ -179,14 +267,24 @@ func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptV
 		count = lc.ipMap[attempt.LoginIP]
 	case "isp":
 		count = lc.ispMap[attempt.ISP]
-	case "city":
-		count = lc.cityMap[attempt.City]
+	case "region":
+		count = lc.regionMap[attempt.Region]
 	case "browser":
 		count = lc.browserNameMap[attempt.BrowserName]
 	case "os":
 		count = lc.osNameMap[attempt.OSName]
-	case "device":
-		count = lc.deviceTypeMap[attempt.DeviceType]
+	case "fonts":
+		count = lc.fontsMap[attempt.Fonts]
+	case "deviceMemory":
+		count = lc.deviceMemoryMap[strconv.Itoa(attempt.DeviceMemory)]
+	case "hardwareConcurrency":
+		count = lc.hardwareConcurrencyMap[strconv.Itoa(attempt.HardwareConcurrency)]
+	case "timezone":
+		count = lc.timezoneMap[attempt.Timezone]
+	case "cpuClass":
+		count = lc.cpuClassMap[attempt.CpuClass]
+	case "platform":
+		count = lc.platformMap[attempt.Platform]
 	default:
 		return 0, fmt.Errorf("unknown feature: %s", subfeature)
 	}
@@ -210,8 +308,8 @@ func checkWeight(subfeature string, feature string) (float64, error) {
 			return weights.LoginIP, nil
 		case "isp":
 			return weights.ISP, nil
-		case "city":
-			return weights.City, nil
+		case "region":
+			return weights.Region, nil
 		default:
 			return 0, fmt.Errorf("unknown feature: %s", subfeature)
 		}
@@ -223,8 +321,25 @@ func checkWeight(subfeature string, feature string) (float64, error) {
 			return weights.BrowserNameandVersion, nil
 		case "os":
 			return weights.OperatingSystemNameandVersion, nil
-		case "device":
-			return weights.DeviceType, nil
+		default:
+			return 0, fmt.Errorf("unknown feature: %s", subfeature)
+		}
+	} else if feature == "bf" {
+		weights := config.Configuration.Weights.BFWeight
+
+		switch subfeature {
+		case "fonts":
+			return weights.Fonts, nil
+		case "deviceMemory":
+			return weights.DeviceMemory, nil
+		case "hardwareConcurrency":
+			return weights.HardwareConcurrency, nil
+		case "timezone":
+			return weights.Timezone, nil
+		case "cpuClass":
+			return weights.CpuClass, nil
+		case "platform":
+			return weights.Platform, nil
 		default:
 			return 0, fmt.Errorf("unknown feature: %s", subfeature)
 		}
@@ -348,11 +463,11 @@ func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []p
 // TODO: more features needed
 // Freeman risk scoring algorithm
 func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
-	// start := time.Now()
-	// defer func() {
-	// 	duration := time.Since(start)
-	// 	fmt.Printf("Risk scoring time: %s\n", duration)
-	// }()
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		fmt.Printf("Risk scoring time: %s\n", duration)
+	}()
 	userID := attempt.UserID
 
 	userLogs := filterLogsByUserID(userID, logs)
@@ -378,17 +493,18 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 	type rateResult struct {
 		px  float64
 		pxu float64
+		w   float64
 		err error
 	}
 
 	// rateCh := make(chan rateResult, len(features))
 	rateCh := make(chan rateResult, len(config.Features))
 	var wg sync.WaitGroup
-	// start2 := time.Now()
-	// defer func() {
-	// 	duration := time.Since(start2)
-	// 	fmt.Printf("Function execution time: %s\n", duration)
-	// }()
+	start2 := time.Now()
+	defer func() {
+		duration := time.Since(start2)
+		fmt.Printf("Function execution time: %s\n", duration)
+	}()
 
 	for feature := range config.Features {
 		wg.Add(1)
@@ -396,20 +512,29 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 			defer wg.Done()
 
 			pxu, err := userLogChecker.GetOccurrenceRateUser(attempt, feature)
+			w := 0.0
+			if feature == "ip" {
+				w = config.Configuration.FeatureWeights.IPWeight
+			} else if feature == "ua" {
+				w = config.Configuration.FeatureWeights.UAWeight
+			} else {
+				w = config.Configuration.FeatureWeights.BFWeight
+			}
+			fmt.Println(feature, " pxu: ", pxu)
 			if err != nil {
-				rateCh <- rateResult{0, 0, err}
+				rateCh <- rateResult{0, 0, 0, err}
 				return
 			}
 
 			// px, err := userLogChecker.GetOccurrenceRateGlobal(attempt, feature, logs)
 			px, err := globalLogChecker.GetOccurrenceRateUser(attempt, feature)
-			println(feature, " px: ", px)
+			fmt.Println(feature, " px: ", px)
 			if err != nil {
-				rateCh <- rateResult{0, 0, err}
+				rateCh <- rateResult{0, 0, 0, err}
 				return
 			}
 
-			rateCh <- rateResult{px, pxu, nil}
+			rateCh <- rateResult{px, pxu, w, nil}
 		}(feature)
 	}
 
@@ -420,7 +545,7 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 		if r.err != nil {
 			return 0, r.err
 		}
-		result *= r.px / r.pxu
+		result *= math.Pow(r.px/r.pxu, r.w)
 	}
 
 	return result, nil
