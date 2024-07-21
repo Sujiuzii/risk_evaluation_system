@@ -72,6 +72,7 @@ type LoginAttempt LogEntry
 // LogAttemptVector represents a single login attempt with extracted partial features.
 type LogAttemptVector LogFeatureEntry
 
+// TODO: move the browser fingerprint to the utils package
 // browser fingerprint
 type BrowserFingerprint struct {
 	Fonts               string `json:"fonts,omitempty"`
@@ -112,9 +113,6 @@ func parseLogEntry(record []string) (LogEntry, error) {
 	deviceType := getDeviceType(record[12])
 
 	fingerprint, _ := parseBrowserfingerprint(record[5])
-	// if err != nil {
-	// 	return LogEntry{}, fmt.Errorf("failed to parse browser fingerprint: %v", err)
-	// }
 
 	return LogEntry{
 		UserID:                utils.CleanString(record[0]),
@@ -144,6 +142,7 @@ func parseLogEntry(record []string) (LogEntry, error) {
 	}, nil
 }
 
+// TODO: move the utils package, and this is an unused function
 func getDeviceType(uA string) string {
 	ua := useragent.New(uA)
 	if ua.Mobile() {
@@ -157,6 +156,7 @@ func getDeviceType(uA string) string {
 	}
 }
 
+// FIXME: check the implementation, what about using pipe
 // extract partial features from the log entries
 func extractFeatures(logs []LogEntry) []LogFeatureEntry {
 	wg := sync.WaitGroup{}
@@ -191,6 +191,7 @@ func extractFeatures(logs []LogEntry) []LogFeatureEntry {
 	return logFeatureEntries
 }
 
+// sub function for processing the chunk
 func processChunk(lines [][]string, wg *sync.WaitGroup, results chan<- LogEntry, errors chan<- error) {
 	defer wg.Done()
 	for _, line := range lines {
@@ -227,7 +228,6 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	var wg sync.WaitGroup
 
 	// ? think twice on the chunksize
-	// ? what about moving to exact number of goroutines
 	chunkSize := 1000
 	var chunk [][]string
 
@@ -269,6 +269,7 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	return logs, nil
 }
 
+// TODO: bad input API
 // load new login attempt from a new file
 func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 	file, _ := os.Open(filePath)
@@ -363,6 +364,7 @@ func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
 	}
 }
 
+// ? take this as a reference
 // // ? unused function
 // func String2LogAttemptVector(log string) LogAttemptVector {
 // 	fields := strings.Split(log, ",")

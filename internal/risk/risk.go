@@ -5,6 +5,7 @@
 // The Freeman function calculates the risk score of a user based on the log data.
 //
 // ! This version is weak in accuracy
+// ! the structures are not well designed
 package risk
 
 import (
@@ -18,6 +19,7 @@ import (
 	"risk_evaluation_system/internal/preprocessing"
 )
 
+// TODO: make daily log checker as a new struct, and hierarchically set the log checkers
 // record the occurrence of each feature
 type LogChecker struct {
 	ipMap                  map[string]int
@@ -141,6 +143,7 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 	chunkSize := n / chunks
 
 	// Initialize mutexes
+	// TODO: should me better constructed
 	mutexes := map[string]*sync.Mutex{
 		"ip":                  &sync.Mutex{},
 		"isp":                 &sync.Mutex{},
@@ -225,7 +228,7 @@ func (lc *LogChecker) getUnseenforIPSubfeature(subfeature string) (float64, erro
 
 }
 
-// TODO: different for ip and other features
+// FIXME: UGLY
 // get the unseen value of a subfeature(fixed value for now)
 func (lc *LogChecker) getUnseenCount(subfeature string) (float64, error) {
 	switch subfeature {
@@ -252,13 +255,9 @@ func (lc *LogChecker) getUnseenCount(subfeature string) (float64, error) {
 	}
 }
 
+// FIXME: UGLY
 // get the occurrence rate of a subfeature for a user
 func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptVector, subfeature string) (float64, error) {
-	// M, err := lc.getUnseenCount(subfeature)
-	// if err != nil {
-	// 	return 0, err
-	// }
-
 	a := 1.0 / (float64(lc.totalCount) * 1.05)
 	var count int
 
@@ -296,6 +295,7 @@ func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptV
 	return float64(count) * a, nil
 }
 
+// TODO: use a global configuration
 // ? expensive for frequent calls
 // FIXME: consider to store the weights
 // parse weight from config for exact subfeature
@@ -408,6 +408,7 @@ func (lc *LogChecker) GetOccurrenceRateGlobal(attempt preprocessing.LogAttemptVe
 }
 
 // check the userID occurrence rate in all logs
+// TODO: 在更改整个文件结构时需要处理
 func (lc *LogChecker) GetUserOccurrenceRate(logs []preprocessing.LogFeatureEntry) (float64, error) {
 	if len(logs) == 0 {
 		return 0, fmt.Errorf("empty log checker")
@@ -458,9 +459,6 @@ func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []p
 
 // ! poor implementation
 // TODO: weight every feature differently
-// TODO: consider involving the ip reputation system and something in
-// TODO: better the performance by merging the log checkers
-// TODO: more features needed
 // Freeman risk scoring algorithm
 func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
 	start := time.Now()
@@ -483,10 +481,10 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 		return 0, err
 	}
 
-	// ! no login history, need double check
-	// BUG: bad for first time login
+	// FIXME: need double check for the high bound
 	if puL == 0 {
-		return 0, fmt.Errorf("empty log checker")
+		// return 0, fmt.Errorf("empty log checker")
+		return 1e10, nil
 	}
 	result := 1.0 / puL
 

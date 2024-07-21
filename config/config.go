@@ -5,7 +5,7 @@
 package config
 
 import (
-	// ? consider using viper for configuration management
+	// TODO: consider using viper for configuration management
 	"encoding/json"
 	"os"
 )
@@ -56,7 +56,6 @@ type SmoothingFactor struct {
 	PlatformFactor            float64 `json:"Platformunseen"`
 }
 
-// TODO: not using this yet
 // feature weights
 type FeatureWeights struct {
 	IPWeight float64 `json:"ipweight"`
