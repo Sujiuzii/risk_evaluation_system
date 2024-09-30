@@ -339,6 +339,19 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 	}, nil
 }
 
+// Be outported as a ffi function to javascript
+func LoadNewLoginAttemptVectorFromJSON(jsonstr string) (LoginAttempt, error) {
+	var attemptvec LoginAttempt
+	if err := json.Unmarshal([]byte(jsonstr), &attemptvec); err != nil {
+		return LoginAttempt{}, err
+	}
+
+	// logic to do with the json string
+	// TODO
+
+	return attemptvec, nil
+}
+
 func PrepareLogFeatures(logs []LogEntry) []LogFeatureEntry {
 	return extractFeatures(logs)
 }
