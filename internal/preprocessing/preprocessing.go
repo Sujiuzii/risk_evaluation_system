@@ -210,6 +210,7 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 		duration := time.Since(start)
 		fmt.Printf("Log processing execution time: %s\n", duration)
 	}()
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %v", err)
@@ -217,9 +218,10 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	reader.FieldsPerRecord = -1 // Allow variable fields
+	reader.FieldsPerRecord = -1 // Allowing variable number of fields
 
-	if _, err := reader.Read(); err != nil {
+	_, err = reader.Read() // Assuming this reads and discards the header
+	if err != nil {
 		return nil, fmt.Errorf("failed to read header: %v", err)
 	}
 
@@ -227,25 +229,24 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	errors := make(chan error)
 	var wg sync.WaitGroup
 
-	// ? think twice on the chunksize
 	chunkSize := 1000
 	var chunk [][]string
 
-	alllogs, err := reader.ReadAll()
+	allLogs, err := reader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read all logs: %v", err)
 	}
 
-	for _, line := range alllogs {
+	for _, line := range allLogs {
 		chunk = append(chunk, line)
-
 		if len(chunk) >= chunkSize {
 			wg.Add(1)
 			go processChunk(chunk, &wg, results, errors)
-			chunk = nil // Reset chunk
+			chunk = [][]string{} // Clearing/Resetting chunk
 		}
 	}
 
+	// Process any remaining logs
 	if len(chunk) > 0 {
 		wg.Add(1)
 		go processChunk(chunk, &wg, results, errors)
@@ -257,17 +258,100 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 		close(errors)
 	}()
 
-	var logs []LogEntry
-	for entry := range results {
-		logs = append(logs, entry)
+	var logs = make([]LogEntry, 0, len(allLogs))
+	var logErr error
+	done := false
+
+	for !done {
+		select {
+		case entry, ok := <-results:
+			if !ok {
+				results = nil
+			} else {
+				logs = append(logs, entry)
+			}
+		case err, ok := <-errors:
+			if !ok {
+				errors = nil
+			} else if logErr == nil { // Just record the first error encountered
+				logErr = err
+			}
+		}
+
+		done = results == nil && errors == nil
 	}
 
-	if err, ok := <-errors; ok {
-		return nil, fmt.Errorf("error processing logs: %v", err)
+	if logErr != nil {
+		return nil, logErr
 	}
 
 	return logs, nil
 }
+
+// func PreprocessLogs(filePath string) ([]LogEntry, error) {
+// 	start := time.Now()
+// 	defer func() {
+// 		duration := time.Since(start)
+// 		fmt.Printf("Log processing execution time: %s\n", duration)
+// 	}()
+// 	file, err := os.Open(filePath)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to open log file: %v", err)
+// 	}
+// 	defer file.Close()
+
+// 	reader := csv.NewReader(file)
+// 	reader.FieldsPerRecord = -1 // Allow variable fields
+
+// 	if _, err := reader.Read(); err != nil {
+// 		return nil, fmt.Errorf("failed to read header: %v", err)
+// 	}
+
+// 	results := make(chan LogEntry)
+// 	errors := make(chan error)
+// 	var wg sync.WaitGroup
+
+// 	// ? think twice on the chunksize
+// 	chunkSize := 1000
+// 	var chunk [][]string
+
+// 	alllogs, err := reader.ReadAll()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to read all logs: %v", err)
+// 	}
+
+// 	for _, line := range alllogs {
+// 		chunk = append(chunk, line)
+
+// 		if len(chunk) >= chunkSize {
+// 			wg.Add(1)
+// 			go processChunk(chunk, &wg, results, errors)
+// 			chunk = nil // Reset chunk
+// 		}
+// 	}
+
+// 	if len(chunk) > 0 {
+// 		wg.Add(1)
+// 		go processChunk(chunk, &wg, results, errors)
+// 	}
+
+// 	go func() {
+// 		wg.Wait()
+// 		close(results)
+// 		close(errors)
+// 	}()
+
+// 	var logs []LogEntry
+// 	for entry := range results {
+// 		logs = append(logs, entry)
+// 	}
+
+// 	if err, ok := <-errors; ok {
+// 		return nil, fmt.Errorf("error processing logs: %v", err)
+// 	}
+
+// 	return logs, nil
+// }
 
 // TODO: bad input API
 // load new login attempt from a new file
