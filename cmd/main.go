@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// 增加了两个参数，用于指定日志文件和新的登录尝试文件
-	logFilePath := flag.String("log-file", "data/example_log.csv", "Path to the log file")
+	logFilePath := flag.String("log-file", "data/merge_all.csv", "Path to the log file")
 	newAttemptFilePath := flag.String("attempt-file", "data/new_attempt.csv", "Path to the new login attempt file")
 	flag.Parse()
 

@@ -6,6 +6,7 @@
 package risk
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math"
 	"sync"
@@ -15,16 +16,21 @@ import (
 	"risk_evaluation_system/internal/preprocessing"
 )
 
+func hashString(s string) string {
+	h := sha256.New()
+	h.Write([]byte(s))
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
 // TODO: make daily log checker as a new struct, and hierarchically set the log checkers
 // 此处 config.Config 为全局变量，不应该在这里使用，考虑将其作为参数传入
 // record the occurrence of each feature
 type LogChecker struct {
-	ipMap          map[string]int
 	ispMap         map[string]int
 	regionMap      map[string]int
 	browserNameMap map[string]int
 	osNameMap      map[string]int
-	platformMap    map[string]int
+	fingerprintMap map[string]int
 	totalCount     int
 }
 
@@ -34,10 +40,6 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 	defer wg.Done()
 
 	for _, log := range logs {
-		mutexes["ip"].Lock()
-		maps["ip"][log.LoginIP]++
-		mutexes["ip"].Unlock()
-
 		mutexes["isp"].Lock()
 		maps["isp"][log.ISP]++
 		mutexes["isp"].Unlock()
@@ -54,9 +56,9 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 		maps["osName"][log.OSName]++
 		mutexes["osName"].Unlock()
 
-		mutexes["platform"].Lock()
-		maps["platform"][log.Platform]++
-		mutexes["platform"].Unlock()
+		mutexes["finegrprint"].Lock()
+		maps["fingerprint"][log.Fingerprint]++
+		mutexes["fingerprint"].Unlock()
 	}
 }
 
@@ -68,20 +70,18 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 		duration := time.Since(start)
 		fmt.Printf("LogChecker setup time: %s\n", duration)
 	}()
-	ipMap := make(map[string]int)
 	ispMap := make(map[string]int)
 	regionMap := make(map[string]int)
 	browserNameMap := make(map[string]int)
 	osNameMap := make(map[string]int)
-	platformMap := make(map[string]int)
+	fingerprintMap := make(map[string]int)
 
 	maps := map[string]map[string]int{
-		"ip":          ipMap,
 		"isp":         ispMap,
 		"region":      regionMap,
 		"browserName": browserNameMap,
 		"osName":      osNameMap,
-		"platform":    platformMap,
+		"fingerprint": fingerprintMap,
 	}
 
 	var wg sync.WaitGroup
@@ -91,12 +91,11 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 	chunkSize := n / numWorkers
 
 	mutexes := map[string]*sync.Mutex{
-		"ip":          &sync.Mutex{},
 		"isp":         &sync.Mutex{},
 		"region":      &sync.Mutex{},
 		"browserName": &sync.Mutex{},
 		"osName":      &sync.Mutex{},
-		"platform":    &sync.Mutex{},
+		"fingerprint": &sync.Mutex{},
 	}
 
 	for i := 0; i < numWorkers; i++ {
@@ -112,12 +111,11 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 	wg.Wait()
 
 	return &LogChecker{
-		ipMap:          ipMap,
 		ispMap:         ispMap,
 		regionMap:      regionMap,
 		browserNameMap: browserNameMap,
 		osNameMap:      osNameMap,
-		platformMap:    platformMap,
+		fingerprintMap: fingerprintMap,
 		totalCount:     n,
 	}
 }
@@ -133,10 +131,19 @@ func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptV
 		count = lc.regionMap[attempt.Region]
 	case "browser":
 		count = lc.browserNameMap[attempt.BrowserName]
+		if attempt.BrowserName == "Unknown" || attempt.BrowserName == "" {
+			count = 1
+		}
 	case "os":
 		count = lc.osNameMap[attempt.OSName]
+		if attempt.OSName == "Unknown" || attempt.OSName == "" {
+			count = 1
+		}
 	case "fingerprint":
-		count = lc.platformMap[attempt.Platform]
+		count = lc.fingerprintMap[attempt.Fingerprint]
+		if attempt.Fingerprint == hashString("Unknown") || attempt.Fingerprint == "" {
+			count = 1
+		}
 	default:
 		return 0, fmt.Errorf("unknown feature: %s", subfeature)
 	}
@@ -168,7 +175,6 @@ func (lc *LogChecker) GetUserOccurrenceRate(logs []preprocessing.LogFeatureEntry
 func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []preprocessing.LogFeatureEntry {
 	var wg sync.WaitGroup
 
-	// TODO: consider better chunk numbers
 	numWorkers := 4
 	chunkSize := (len(logs) + numWorkers - 1) / numWorkers
 
