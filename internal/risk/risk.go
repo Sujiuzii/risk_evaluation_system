@@ -55,7 +55,7 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 		maps["osName"][log.OSName]++
 		mutexes["osName"].Unlock()
 
-		mutexes["finegrprint"].Lock()
+		mutexes["fingerprint"].Lock()
 		maps["fingerprint"][log.Fingerprint]++
 		mutexes["fingerprint"].Unlock()
 	}

@@ -5,7 +5,6 @@
 package config
 
 import (
-	// TODO: consider using viper for configuration management
 	"encoding/json"
 	"os"
 )

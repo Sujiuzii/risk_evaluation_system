@@ -1,9 +1,9 @@
 {
     "featureweights": {
-        "ispweight": 0.2,
-        "regionweight": 0.2,
-        "browserweight": 0.2,
-        "osweight": 0.2,
-        "fingerprintweight": 0.2
+        "ispweight": 1,
+        "regionweight": 1,
+        "browserweight": 1,
+        "osweight": 1,
+        "fingerprintweight": 1
     }
 }
