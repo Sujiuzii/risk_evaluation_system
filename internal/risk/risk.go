@@ -300,7 +300,7 @@ var Weights = map[string]float64{
 	"fingerprint": 0.2,
 }
 
-func GetRiskScorePlain(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
+func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
 	type probability struct {
 		px  float64
 		pxu float64
@@ -384,7 +384,7 @@ func updateWeights(rList map[string]float64) {
 		}
 	}
 
-	wMin := min((1.0-tau)/4.0, 1.0/5.0)
+	wMin := math.Min((1.0-tau)/4.0, 1.0/5.0)
 
 	updateSub(tReduce, wMin, lambda)
 }

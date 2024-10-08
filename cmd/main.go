@@ -46,4 +46,10 @@ func main() {
 	} else {
 		fmt.Printf("Risk: %f\n", risk)
 	}
+
+	if score, err := risk.GetRiskScore(attemptvec, logsf); err != nil {
+		log.Fatalf("Error evaluating risk score: %v", err)
+	} else {
+		fmt.Printf("New score: %f\n", score)
+	}
 }
