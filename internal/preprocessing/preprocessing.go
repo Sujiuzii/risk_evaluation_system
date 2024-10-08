@@ -74,7 +74,6 @@ func parseBrowserfingerprint(jsonStr string) (BrowserFingerprint, error) {
 // user gid logtime objective_system login_ip browser_fingerprinting country region city isp org as agent
 // 分别是： 用户ID，全局ID，日志时间，目标系统，登录IP，浏览器指纹，国家，地区，城市，ISP，组织，AS，UA
 func parseLogEntry(record []string) (LogEntry, error) {
-	// TODO: 考虑 ua 与 浏览器指纹 缺失的情况
 	ua := useragent.New(record[12])
 
 	browserName := "Unknown"
@@ -308,20 +307,6 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 		BrowserName:     browserName,
 		OSName:          osName,
 	}, nil
-}
-
-// Be outported as a ffi function to javascript
-// 此处是未完成后续可能跟前端 json 登录尝试交互的接口
-func LoadNewLoginAttemptVectorFromJSON(jsonstr string) (LoginAttempt, error) {
-	var attemptvec LoginAttempt
-	if err := json.Unmarshal([]byte(jsonstr), &attemptvec); err != nil {
-		return LoginAttempt{}, err
-	}
-
-	// logic to do with the json string
-	// TODO
-
-	return attemptvec, nil
 }
 
 func PrepareLogFeatures(logs []LogEntry) []LogFeatureEntry {

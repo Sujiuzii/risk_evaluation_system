@@ -16,14 +16,13 @@ import (
 	"risk_evaluation_system/internal/preprocessing"
 )
 
+// 简易的哈希函数，用于处理浏览器指纹空值的特殊情况
 func hashString(s string) string {
 	h := sha256.New()
 	h.Write([]byte(s))
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-// TODO: make daily log checker as a new struct, and hierarchically set the log checkers
-// 此处 config.Config 为全局变量，不应该在这里使用，考虑将其作为参数传入
 // record the occurrence of each feature
 type LogChecker struct {
 	ispMap         map[string]int
@@ -64,7 +63,7 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 
 // constructor for LogChecker(expensive)
 // 构造器，在本实现中将建立针对用户以及全局的日志检查器
-func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) *LogChecker {
+func NewLogChecker(logs []preprocessing.LogFeatureEntry) *LogChecker {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
@@ -120,11 +119,11 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 	}
 }
 
-func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptVector, subfeature string) (float64, error) {
+func (lc *LogChecker) GetOccurrenceRateUser(attempt preprocessing.LogAttemptVector, feature string) (float64, error) {
 	a := 1.0 / (float64(lc.totalCount) + 1.0)
 	var count int
 
-	switch subfeature {
+	switch feature {
 	case "isp":
 		count = lc.ispMap[attempt.ISP]
 	case "region":
@@ -145,22 +144,13 @@ func (lc *LogChecker) GetOccurrenceRateUserSub(attempt preprocessing.LogAttemptV
 			count = 1
 		}
 	default:
-		return 0, fmt.Errorf("unknown feature: %s", subfeature)
+		return 0, fmt.Errorf("unknown feature: %s", feature)
 	}
 
 	if count == 0 {
 		return a, nil
 	}
-
 	return float64(count) * a, nil
-}
-
-// check occurrence rate for subfeatures and weight them into a single value
-func (lc *LogChecker) GetOccurrenceRateUser(attempt preprocessing.LogAttemptVector, feature string) (float64, error) {
-	result := 0.0
-	// TODO
-
-	return result, nil
 }
 
 // check the userID occurrence rate in all logs
@@ -211,6 +201,23 @@ func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []p
 	return userLogs
 }
 
+func getWeight(configuration config.Config, feature string) float64 {
+	var w float64
+	switch feature {
+	case "isp":
+		w = configuration.FeatureWeights.ISPWeight
+	case "region":
+		w = configuration.FeatureWeights.RegionWeight
+	case "browser":
+		w = configuration.FeatureWeights.BrowserWeight
+	case "os":
+		w = configuration.FeatureWeights.OSWeight
+	default:
+		w = configuration.FeatureWeights.FingerprintWeight
+	}
+	return w
+}
+
 func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
 	start := time.Now()
 	defer func() {
@@ -221,8 +228,8 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 
 	userLogs := filterLogsByUserID(userID, logs)
 
-	userLogChecker := NewLogChecker(userLogs, config.Configuration)
-	globalLogChecker := NewLogChecker(logs, config.Configuration)
+	userLogChecker := NewLogChecker(userLogs)
+	globalLogChecker := NewLogChecker(logs)
 
 	puL, err := userLogChecker.GetUserOccurrenceRate(logs)
 
@@ -250,19 +257,6 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 		go func(feature string) {
 			defer wg.Done()
 
-			var w float64
-			if feature == "isp" {
-				w = config.Configuration.FeatureWeights.ISPWeight
-			} else if feature == "region" {
-				w = config.Configuration.FeatureWeights.RegionWeight
-			} else if feature == "browser" {
-				w = config.Configuration.FeatureWeights.BrowserWeight
-			} else if feature == "os" {
-				w = config.Configuration.FeatureWeights.OSWeight
-			} else {
-				w = config.Configuration.FeatureWeights.FingerprintWeight
-			}
-
 			pxu, err := userLogChecker.GetOccurrenceRateUser(attempt, feature)
 			fmt.Println(feature, " pxu: ", pxu)
 			if err != nil {
@@ -276,6 +270,8 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 				rateCh <- rateResult{0, 0, 0, err}
 				return
 			}
+
+			w := getWeight(config.Configuration, feature)
 
 			rateCh <- rateResult{px, pxu, w, nil}
 		}(feature)
