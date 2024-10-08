@@ -1,4 +1,4 @@
-// Description: This file contains the features that can be used to
+// Description: This file contains the features to be used
 package config
 
 var Features = map[string][]string{

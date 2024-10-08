@@ -20,6 +20,7 @@ import (
 )
 
 // LogEntry represents a single log entry.
+// 完整的日志记录，主要是用于日志预处理
 type LogEntry struct {
 	UserID                string
 	GID                   string
@@ -48,6 +49,7 @@ type LogEntry struct {
 }
 
 // LogFeatureEntry represents a single log entry with extracted partial features.
+// 提取的部分特征，用于风险评估
 type LogFeatureEntry struct {
 	UserID              string
 	LogTime             time.Time
@@ -74,6 +76,7 @@ type LogAttemptVector LogFeatureEntry
 
 // TODO: move the browser fingerprint to the utils package
 // browser fingerprint
+// 默认缺省字段
 type BrowserFingerprint struct {
 	Fonts               string `json:"fonts,omitempty"`
 	DeviceMemory        int    `json:"deviceMemory,omitempty"`
@@ -95,6 +98,9 @@ func parseBrowserfingerprint(jsonStr string) (BrowserFingerprint, error) {
 }
 
 // parse the log entry from a CSV record
+// 对于 CSV 记录的日志条目结构有强制要求，后续可以考虑使用更加灵活的方式
+// user gid logtime objective_system login_ip browser_fingerprinting country region city isp org as agent
+// 分别是： 用户ID，全局ID，日志时间，目标系统，登录IP，浏览器指纹，国家，地区，城市，ISP，组织，AS，UA
 func parseLogEntry(record []string) (LogEntry, error) {
 	logTime, err := time.Parse("2006-01-02 15:04", record[2])
 	if err != nil {
@@ -102,11 +108,13 @@ func parseLogEntry(record []string) (LogEntry, error) {
 	}
 
 	// fix the problem of bad ip addressing
+	// 作 蓉城 和 合肥 的映射（不知道为什么合肥 ip 会被记作蓉城）
 	city := utils.CleanString(record[8])
 	if city == "蓉城" {
 		city = "合肥"
 	}
 
+	// TODO: 考虑 ua 与 浏览器指纹 缺失的情况
 	ua := useragent.New(record[12])
 	browserName, browserVersion := ua.Browser()
 	osName, osVersion := ua.OSInfo().Name, ua.OSInfo().Version
@@ -142,7 +150,8 @@ func parseLogEntry(record []string) (LogEntry, error) {
 	}, nil
 }
 
-// TODO: move the utils package, and this is an unused function
+// 解析 ua 字符串，获取设备类型，分为 Mobile、Desktop/Laptop、Bot、Unknown
+// FIXME：这里的实现可能有问题，以及考虑移动至 utils 包
 func getDeviceType(uA string) string {
 	ua := useragent.New(uA)
 	if ua.Mobile() {
@@ -156,7 +165,7 @@ func getDeviceType(uA string) string {
 	}
 }
 
-// FIXME: check the implementation, what about using pipe
+// FIXME: 本实现可能可以提速（增加并行度）
 // extract partial features from the log entries
 func extractFeatures(logs []LogEntry) []LogFeatureEntry {
 	wg := sync.WaitGroup{}
@@ -254,6 +263,8 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 
 	go func() {
 		wg.Wait()
+
+		// Closing the channels after all logs have been processed
 		close(results)
 		close(errors)
 	}()
@@ -424,6 +435,7 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 }
 
 // Be outported as a ffi function to javascript
+// 此处是未完成后续可能跟前端 json 登录尝试交互的接口
 func LoadNewLoginAttemptVectorFromJSON(jsonstr string) (LoginAttempt, error) {
 	var attemptvec LoginAttempt
 	if err := json.Unmarshal([]byte(jsonstr), &attemptvec); err != nil {

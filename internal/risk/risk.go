@@ -20,6 +20,7 @@ import (
 )
 
 // TODO: make daily log checker as a new struct, and hierarchically set the log checkers
+// 此处 config.Config 为全局变量，不应该在这里使用，考虑将其作为参数传入
 // record the occurrence of each feature
 type LogChecker struct {
 	ipMap                  map[string]int
@@ -40,6 +41,7 @@ type LogChecker struct {
 }
 
 // use goroutines and mutexes to count the occurrence of each feature
+// 辅助函数，用于处理日志
 func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps map[string]map[string]int, mutexes map[string]*sync.Mutex) {
 	defer wg.Done()
 
@@ -99,6 +101,7 @@ func processLogs(logs []preprocessing.LogFeatureEntry, wg *sync.WaitGroup, maps 
 }
 
 // constructor for LogChecker(expensive)
+// 构造器，在本实现中将建立针对用户以及全局的日志检查器
 func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) *LogChecker {
 	start := time.Now()
 	defer func() {
@@ -139,8 +142,8 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 	n := len(logs)
 
 	// TODO: consider better chunk numbers
-	chunks := 4
-	chunkSize := n / chunks
+	numWorkers := 4
+	chunkSize := n / numWorkers
 
 	// Initialize mutexes
 	// TODO: should me better constructed
@@ -160,10 +163,10 @@ func NewLogChecker(logs []preprocessing.LogFeatureEntry, configs config.Config) 
 		"platform":            &sync.Mutex{},
 	}
 
-	for i := 0; i < chunks; i++ {
+	for i := 0; i < numWorkers; i++ {
 		start := i * chunkSize
 		end := start + chunkSize
-		if i == chunks-1 {
+		if i == numWorkers-1 {
 			end = n
 		}
 		wg.Add(1)
@@ -460,12 +463,13 @@ func filterLogsByUserID(userID string, logs []preprocessing.LogFeatureEntry) []p
 // ! poor implementation
 // TODO: weight every feature differently
 // Freeman risk scoring algorithm
+// 主要函数，用于计算用户当前登录的风险分数
 func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start)
-		fmt.Printf("Risk scoring time: %s\n", duration)
-	}()
+	// start := time.Now()
+	// defer func() {
+	// 	duration := time.Since(start)
+	// 	fmt.Printf("Risk scoring time: %s\n", duration)
+	// }()
 	userID := attempt.UserID
 
 	userLogs := filterLogsByUserID(userID, logs)
@@ -498,19 +502,19 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 	// rateCh := make(chan rateResult, len(features))
 	rateCh := make(chan rateResult, len(config.Features))
 	var wg sync.WaitGroup
-	start2 := time.Now()
-	defer func() {
-		duration := time.Since(start2)
-		fmt.Printf("Function execution time: %s\n", duration)
-	}()
+
+	// start2 := time.Now()
+	// defer func() {
+	// 	duration := time.Since(start2)
+	// 	fmt.Printf("Function execution time: %s\n", duration)
+	// }()
 
 	for feature := range config.Features {
 		wg.Add(1)
 		go func(feature string) {
 			defer wg.Done()
 
-			pxu, err := userLogChecker.GetOccurrenceRateUser(attempt, feature)
-			w := 0.0
+			var w float64
 			if feature == "ip" {
 				w = config.Configuration.FeatureWeights.IPWeight
 			} else if feature == "ua" {
@@ -518,13 +522,14 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 			} else {
 				w = config.Configuration.FeatureWeights.BFWeight
 			}
+
+			pxu, err := userLogChecker.GetOccurrenceRateUser(attempt, feature)
 			fmt.Println(feature, " pxu: ", pxu)
 			if err != nil {
 				rateCh <- rateResult{0, 0, 0, err}
 				return
 			}
 
-			// px, err := userLogChecker.GetOccurrenceRateGlobal(attempt, feature, logs)
 			px, err := globalLogChecker.GetOccurrenceRateUser(attempt, feature)
 			fmt.Println(feature, " px: ", px)
 			if err != nil {
@@ -537,6 +542,8 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 	}
 
 	wg.Wait()
+
+	// 在所有值都计算完毕后，关闭通道
 	close(rateCh)
 
 	for r := range rateCh {
