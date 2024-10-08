@@ -18,9 +18,15 @@ type FeatureWeights struct {
 	FingerprintWeight float64 `json:"fingerprintweight"`
 }
 
+type UpdateParameters struct {
+	Lambda float64 `json:"lambda"`
+	Tau    float64 `json:"tau"`
+}
+
 // configuration struct
 type Config struct {
-	FeatureWeights FeatureWeights `json:"featureweights"`
+	FeatureWeights   FeatureWeights   `json:"featureweights"`
+	UpdateParameters UpdateParameters `json:"updateparameters"`
 }
 
 // global configuration variable

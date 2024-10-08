@@ -291,3 +291,100 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 
 	return result, nil
 }
+
+var Weights = map[string]float64{
+	"isp":         0.2,
+	"region":      0.2,
+	"browserName": 0.2,
+	"osName":      0.2,
+	"fingerprint": 0.2,
+}
+
+func GetRiskScorePlain(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
+	type probability struct {
+		px  float64
+		pxu float64
+	}
+
+	userID := attempt.UserID
+	userLogs := filterLogsByUserID(userID, logs)
+
+	userLogChecker := NewLogChecker(userLogs)
+	globalLogChecker := NewLogChecker(logs)
+
+	pu, err := userLogChecker.GetUserOccurrenceRate(logs)
+
+	if err != nil {
+		return 0, err
+	}
+
+	if pu == 0 {
+		return 1e10, nil
+	}
+
+	puA := 1.0 / float64(userLogChecker.totalCount)
+
+	result := 0.0
+
+	probabilities := make(map[string]probability)
+
+	for _, feature := range config.Features {
+		pxu, err := userLogChecker.GetOccurrenceRateUser(attempt, feature)
+		if err != nil {
+			return 0, err
+		}
+
+		px, err := globalLogChecker.GetOccurrenceRateUser(attempt, feature)
+		if err != nil {
+			return 0, err
+		}
+
+		probabilities[feature] = probability{px, pxu}
+	}
+
+	rList := make(map[string]float64)
+
+	for feature, prob := range probabilities {
+		w := Weights[feature]
+		r := 1 - (0.05*prob.px*puA)/(prob.pxu*pu*pu)
+		rList[feature] = r
+		result += w * r
+	}
+
+	updateWeights(rList)
+
+	return result, nil
+}
+
+func updateSub(tReduce []string, wMin float64, lambda float64) {
+	ends := 0.0
+
+	for _, feature := range tReduce {
+		original := Weights[feature]
+		Weights[feature] = (1-lambda)*Weights[feature] + lambda*wMin
+		ends += original - Weights[feature]
+	}
+
+	if ends > 0 {
+		for _, feature := range config.Features {
+			Weights[feature] += ends / float64(len(config.Features))
+		}
+	}
+}
+
+func updateWeights(rList map[string]float64) {
+	tau := config.Configuration.UpdateParameters.Tau
+	lambda := config.Configuration.UpdateParameters.Lambda
+
+	tReduce := make([]string, 0, 5)
+
+	for feature, r := range rList {
+		if r < tau {
+			tReduce = append(tReduce, feature)
+		}
+	}
+
+	wMin := min((1.0-tau)/4.0, 1.0/5.0)
+
+	updateSub(tReduce, wMin, lambda)
+}

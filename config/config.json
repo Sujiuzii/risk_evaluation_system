@@ -5,5 +5,10 @@
         "browserweight": 1,
         "osweight": 1,
         "fingerprintweight": 1
+    },
+    "updateparameters": {
+        "lambda": 0.1,
+        "tau": 0.1,
+        "alpha": 0.1
     }
 }
