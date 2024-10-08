@@ -1,39 +1,9 @@
 {
     "featureweights": {
-        "ipweight": 0.2,
-        "uaweight": 0.3,
-        "bfweight": 0.5
-    },
-    "weights": {
-        "ipweights": {
-            "LoginIP": 0.05,
-            "ISP": 0.25,
-            "Region": 0.7
-        },
-        "uaweights": {
-            "Browser": 0.5,
-            "OS": 0.5
-        },
-        "bfweights": {
-            "Fonts": 0.2,
-            "DeviceMemory": 0.1,
-            "HardwareConcurrency": 0.1,
-            "Timezone": 0.2,
-            "CpuClass": 0.2,
-            "Platform": 0.2
-        }
-    },
-    "smoothingfactors": {
-        "IPunseen": 50,
-        "ISPunseen": 5,
-        "Regionunseen": 10,
-        "Browserunseen": 0.05,
-        "OSunseen": 0.05,
-        "Fontsunseen": 3,
-        "DeviceMemoryunseen": 10,
-        "HardwareConcurrencyunseen": 10,
-        "Timezoneunseen": 1,
-        "CpuClassunseen": 3,
-        "Platformunseen": 3
+        "ispweight": 0.2,
+        "regionweight": 0.2,
+        "browserweight": 0.2,
+        "osweight": 0.2,
+        "fingerprintweight": 0.2
     }
 }

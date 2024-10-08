@@ -19,12 +19,9 @@ import (
 	"github.com/mssola/useragent"
 )
 
-// LogEntry represents a single log entry.
-// 完整的日志记录，主要是用于日志预处理
 type LogEntry struct {
 	UserID                string
 	GID                   string
-	LogTime               time.Time
 	ObjectiveSystem       string
 	LoginIP               string
 	BrowserFingerprinting string
@@ -48,11 +45,8 @@ type LogEntry struct {
 	Platform              string
 }
 
-// LogFeatureEntry represents a single log entry with extracted partial features.
-// 提取的部分特征，用于风险评估
 type LogFeatureEntry struct {
 	UserID              string
-	LogTime             time.Time
 	LoginIP             string
 	Region              string
 	ISP                 string
@@ -68,15 +62,10 @@ type LogFeatureEntry struct {
 	Platform            string
 }
 
-// LoginAttempt represents a single login attempt.
 type LoginAttempt LogEntry
 
-// LogAttemptVector represents a single login attempt with extracted partial features.
 type LogAttemptVector LogFeatureEntry
 
-// TODO: move the browser fingerprint to the utils package
-// browser fingerprint
-// 默认缺省字段
 type BrowserFingerprint struct {
 	Fonts               string `json:"fonts,omitempty"`
 	DeviceMemory        int    `json:"deviceMemory,omitempty"`
@@ -92,8 +81,6 @@ func parseBrowserfingerprint(jsonStr string) (BrowserFingerprint, error) {
 	jsonStr = fmt.Sprintf("{%s}", jsonStr)
 
 	err := json.Unmarshal([]byte(jsonStr), &fingerprint)
-	// fmt.Println(jsonStr)
-	// fmt.Printf("Parsed Browser Fingerprint: %+v\n", fingerprint)
 	return fingerprint, err
 }
 
@@ -102,18 +89,6 @@ func parseBrowserfingerprint(jsonStr string) (BrowserFingerprint, error) {
 // user gid logtime objective_system login_ip browser_fingerprinting country region city isp org as agent
 // 分别是： 用户ID，全局ID，日志时间，目标系统，登录IP，浏览器指纹，国家，地区，城市，ISP，组织，AS，UA
 func parseLogEntry(record []string) (LogEntry, error) {
-	logTime, err := time.Parse("2006-01-02 15:04", record[2])
-	if err != nil {
-		return LogEntry{}, fmt.Errorf("failed to parse log time: %v", err)
-	}
-
-	// fix the problem of bad ip addressing
-	// 作 蓉城 和 合肥 的映射（不知道为什么合肥 ip 会被记作蓉城）
-	city := utils.CleanString(record[8])
-	if city == "蓉城" {
-		city = "合肥"
-	}
-
 	// TODO: 考虑 ua 与 浏览器指纹 缺失的情况
 	ua := useragent.New(record[12])
 	browserName, browserVersion := ua.Browser()
@@ -125,13 +100,12 @@ func parseLogEntry(record []string) (LogEntry, error) {
 	return LogEntry{
 		UserID:                utils.CleanString(record[0]),
 		GID:                   utils.CleanString(record[1]),
-		LogTime:               logTime,
 		ObjectiveSystem:       utils.CleanString(record[3]),
 		LoginIP:               utils.CleanString(record[4]),
 		BrowserFingerprinting: utils.CleanString(record[5]),
 		Country:               utils.CleanString(record[6]),
 		RegionName:            utils.CleanString(record[7]),
-		City:                  city,
+		City:                  utils.CleanString(record[8]),
 		ISP:                   utils.CleanString(record[9]),
 		Org:                   utils.CleanString(record[10]),
 		AS:                    utils.CleanString(record[11]),
@@ -150,8 +124,6 @@ func parseLogEntry(record []string) (LogEntry, error) {
 	}, nil
 }
 
-// 解析 ua 字符串，获取设备类型，分为 Mobile、Desktop/Laptop、Bot、Unknown
-// FIXME：这里的实现可能有问题，以及考虑移动至 utils 包
 func getDeviceType(uA string) string {
 	ua := useragent.New(uA)
 	if ua.Mobile() {
@@ -165,8 +137,6 @@ func getDeviceType(uA string) string {
 	}
 }
 
-// FIXME: 本实现可能可以提速（增加并行度）
-// extract partial features from the log entries
 func extractFeatures(logs []LogEntry) []LogFeatureEntry {
 	wg := sync.WaitGroup{}
 	wg.Add(len(logs))
@@ -178,7 +148,6 @@ func extractFeatures(logs []LogEntry) []LogFeatureEntry {
 
 			logFeatureEntries[i] = LogFeatureEntry{
 				UserID:              log.UserID,
-				LogTime:             log.LogTime,
 				LoginIP:             log.LoginIP,
 				Region:              log.RegionName,
 				ISP:                 log.ISP,
@@ -386,10 +355,6 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 	}
 
 	attempt := records[1] // Assume first row is header, second row is the actual data
-	logTime, err := time.Parse("2006-01-02 15:04", attempt[2])
-	if err != nil {
-		return LoginAttempt{}, err
-	}
 
 	ua := useragent.New(attempt[12])
 	browserName, browserVersion := ua.Browser()
@@ -401,21 +366,15 @@ func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
 		return LoginAttempt{}, err
 	}
 
-	city := utils.CleanString(attempt[8])
-	if city == "蓉城" {
-		city = "合肥"
-	}
-
 	return LoginAttempt{
 		UserID:                utils.CleanString(attempt[0]),
 		GID:                   utils.CleanString(attempt[1]),
-		LogTime:               logTime,
 		ObjectiveSystem:       utils.CleanString(attempt[3]),
 		LoginIP:               utils.CleanString(attempt[4]),
 		BrowserFingerprinting: utils.CleanString(attempt[5]),
 		Country:               utils.CleanString(attempt[6]),
 		RegionName:            utils.CleanString(attempt[7]),
-		City:                  city,
+		City:                  utils.CleanString(attempt[8]),
 		ISP:                   utils.CleanString(attempt[9]),
 		Org:                   utils.CleanString(attempt[10]),
 		AS:                    utils.CleanString(attempt[11]),
@@ -456,7 +415,6 @@ func PrepareLogFeatures(logs []LogEntry) []LogFeatureEntry {
 func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
 	return LogAttemptVector{
 		UserID:              attempt.UserID,
-		LogTime:             attempt.LogTime,
 		LoginIP:             attempt.LoginIP,
 		Region:              attempt.RegionName,
 		ISP:                 attempt.ISP,
@@ -488,7 +446,6 @@ func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
 
 // 	return LogAttemptVector{
 // 		UserID:         fields[0],
-// 		LogTime:        logTime,
 // 		LoginIP:        fields[4],
 // 		City:           fields[8],
 // 		ISP:            fields[9],
