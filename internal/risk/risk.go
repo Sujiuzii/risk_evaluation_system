@@ -131,25 +131,25 @@ func (lc *LogChecker) GetOccurrenceRateUser(attempt preprocessing.LogAttemptVect
 	case "browser":
 		count = lc.browserNameMap[attempt.BrowserName]
 		if attempt.BrowserName == "Unknown" || attempt.BrowserName == "" {
-			count = 1
+			count = -1
 		}
 	case "os":
 		count = lc.osNameMap[attempt.OSName]
 		if attempt.OSName == "Unknown" || attempt.OSName == "" {
-			count = 1
+			count = -1
 		}
 	case "fingerprint":
 		count = lc.fingerprintMap[attempt.Fingerprint]
 		if attempt.Fingerprint == hashString("Unknown") || attempt.Fingerprint == "" {
-			count = 1
+			count = -1
 		}
 	default:
 		return 0, fmt.Errorf("unknown feature: %s", feature)
 	}
 
-	if count == 0 {
-		return a, nil
-	}
+	// if count == 0 {
+	// 	return a, nil
+	// }
 	return float64(count) * a, nil
 }
 
@@ -292,13 +292,8 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 	return result, nil
 }
 
-var Weights = map[string]float64{
-	"isp":         0.2,
-	"region":      0.2,
-	"browserName": 0.2,
-	"osName":      0.2,
-	"fingerprint": 0.2,
-}
+// 用于记录与用户 ID 绑定的权重
+var WeightList = make(map[string]map[string]float64)
 
 func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
 	type probability struct {
@@ -307,6 +302,17 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 	}
 
 	userID := attempt.UserID
+
+	if _, ok := WeightList[userID]; !ok {
+		WeightList[userID] = map[string]float64{
+			"isp":         0.2,
+			"region":      0.2,
+			"browserName": 0.2,
+			"osName":      0.2,
+			"fingerprint": 0.2,
+		}
+	}
+
 	userLogs := filterLogsByUserID(userID, logs)
 
 	userLogChecker := NewLogChecker(userLogs)
@@ -339,40 +345,44 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 			return 0, err
 		}
 
-		probabilities[feature] = probability{px, pxu}
+		if px <= 0 {
+			probabilities[feature] = probability{0, 1}
+		} else {
+			probabilities[feature] = probability{px, pxu}
+		}
 	}
 
 	rList := make(map[string]float64)
 
 	for feature, prob := range probabilities {
-		w := Weights[feature]
+		w := WeightList[userID][feature]
 		r := 1 - (0.05*prob.px*puA)/(prob.pxu*pu)
 		rList[feature] = r
 		result += w * r
 	}
 
-	updateWeights(rList)
+	updateWeights(userID, rList)
 
 	return result, nil
 }
 
-func updateSub(tReduce []string, wMin float64, lambda float64) {
+func updateSub(userID string, tReduce []string, wMin float64, lambda float64) {
 	ends := 0.0
 
 	for _, feature := range tReduce {
-		original := Weights[feature]
-		Weights[feature] = (1-lambda)*Weights[feature] + lambda*wMin
-		ends += original - Weights[feature]
+		original := WeightList[userID][feature]
+		WeightList[userID][feature] = (1-lambda)*WeightList[userID][feature] + lambda*wMin
+		ends += original - WeightList[userID][feature]
 	}
 
 	if ends > 0 {
 		for _, feature := range config.Features {
-			Weights[feature] += ends / float64(len(config.Features))
+			WeightList[userID][feature] += ends / float64(len(config.Features))
 		}
 	}
 }
 
-func updateWeights(rList map[string]float64) {
+func updateWeights(userID string, rList map[string]float64) {
 	tau := config.Configuration.UpdateParameters.Tau
 	lambda := config.Configuration.UpdateParameters.Lambda
 
@@ -386,5 +396,5 @@ func updateWeights(rList map[string]float64) {
 
 	wMin := math.Min((1.0-tau)/4.0, 1.0/5.0)
 
-	updateSub(tReduce, wMin, lambda)
+	updateSub(userID, tReduce, wMin, lambda)
 }
