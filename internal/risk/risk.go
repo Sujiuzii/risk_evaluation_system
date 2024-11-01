@@ -354,9 +354,12 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 
 	rList := make(map[string]float64)
 
+	fmt.Printf("pu: %f \n", pu)
+	fmt.Printf("puA: %f \n", puA)
 	for feature, prob := range probabilities {
 		w := WeightList[userID][feature]
 		r := 1 - (0.05*prob.px*puA)/(prob.pxu*pu)
+		fmt.Printf("%s score: % f \n", feature, r)
 		rList[feature] = r
 		result += w * r
 	}
