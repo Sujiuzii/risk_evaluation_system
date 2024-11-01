@@ -218,7 +218,7 @@ func getWeight(configuration config.Config, feature string) float64 {
 	return w
 }
 
-func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
+func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, string, error) {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
@@ -234,11 +234,11 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 	puL, err := userLogChecker.GetUserOccurrenceRate(logs)
 
 	if err != nil {
-		return 0, err
+		return 0, userID, err
 	}
 
 	if puL == 0 {
-		return 1e10, nil
+		return 1e10, userID, nil
 	}
 	result := 1.0 / puL
 
@@ -284,18 +284,18 @@ func Freeman(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFea
 
 	for r := range rateCh {
 		if r.err != nil {
-			return 0, r.err
+			return 0, userID, r.err
 		}
 		result *= math.Pow(r.px/r.pxu, r.w)
 	}
 
-	return result, nil
+	return result, userID, nil
 }
 
 // 用于记录与用户 ID 绑定的权重
 var WeightList = make(map[string]map[string]float64)
 
-func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, error) {
+func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.LogFeatureEntry) (float64, string, error) {
 	type probability struct {
 		px  float64
 		pxu float64
@@ -307,8 +307,8 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 		WeightList[userID] = map[string]float64{
 			"isp":         0.2,
 			"region":      0.2,
-			"browserName": 0.2,
-			"osName":      0.2,
+			"browser":     0.2,
+			"os":          0.2,
 			"fingerprint": 0.2,
 		}
 	}
@@ -321,11 +321,11 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 	pu, err := userLogChecker.GetUserOccurrenceRate(logs)
 
 	if err != nil {
-		return 0, err
+		return 0, userID, err
 	}
 
 	if pu == 0 {
-		return 1e10, nil
+		return 1e10, userID, nil
 	}
 
 	puA := 1.0 / float64(userLogChecker.totalCount)
@@ -337,16 +337,16 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 	for _, feature := range config.Features {
 		pxu, err := userLogChecker.GetOccurrenceRateUser(attempt, feature)
 		if err != nil {
-			return 0, err
+			return 0, userID, err
 		}
 
 		px, err := globalLogChecker.GetOccurrenceRateUser(attempt, feature)
 		if err != nil {
-			return 0, err
+			return 0, userID, err
 		}
 
-		if px <= 0 {
-			probabilities[feature] = probability{0, 1}
+		if pxu <= 0 {
+			probabilities[feature] = probability{1, 0}
 		} else {
 			probabilities[feature] = probability{px, pxu}
 		}
@@ -354,11 +354,17 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 
 	rList := make(map[string]float64)
 
-	fmt.Printf("pu: %f \n", pu)
-	fmt.Printf("puA: %f \n", puA)
+	fmt.Printf("puA/pu: %f \n", puA/pu)
 	for feature, prob := range probabilities {
 		w := WeightList[userID][feature]
-		r := 1 - (0.05*prob.px*puA)/(prob.pxu*pu)
+		r := 0.0
+		if prob.pxu != 0 {
+			r = 1 - (0.01*prob.px*puA)/(prob.pxu*pu)
+			if r < -0.1 {
+				r = -0.1
+			}
+		}
+
 		fmt.Printf("%s score: % f \n", feature, r)
 		rList[feature] = r
 		result += w * r
@@ -366,7 +372,15 @@ func GetRiskScore(attempt preprocessing.LogAttemptVector, logs []preprocessing.L
 
 	updateWeights(userID, rList)
 
-	return result, nil
+	for feature, weight := range WeightList[userID] {
+		fmt.Printf("%s : %f; ", feature, weight)
+	}
+	fmt.Print("\n")
+	if result < 0 {
+		result = 0
+	}
+
+	return result, userID, nil
 }
 
 func updateSub(userID string, tReduce []string, wMin float64, lambda float64) {
