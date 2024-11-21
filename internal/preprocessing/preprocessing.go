@@ -2,8 +2,6 @@
 //
 // The PreprocessLogs function reads the log file and preprocesses the log entries.
 // The LoadNewLoginAttempt function loads a new login attempt from a file.
-//
-// Goroutines are used to process the log entries in parallel.
 package preprocessing
 
 import (
@@ -90,10 +88,8 @@ func parseBrowserfingerprint(jsonStr string) (BrowserFingerprint, error) {
 	var fingerprint BrowserFingerprint
 
 	jsonStr = fmt.Sprintf("{%s}", jsonStr)
-
 	err := json.Unmarshal([]byte(jsonStr), &fingerprint)
-	// fmt.Println(jsonStr)
-	// fmt.Printf("Parsed Browser Fingerprint: %+v\n", fingerprint)
+
 	return fingerprint, err
 }
 
@@ -151,7 +147,7 @@ func parseLogEntry(record []string) (LogEntry, error) {
 }
 
 // 解析 ua 字符串，获取设备类型，分为 Mobile、Desktop/Laptop、Bot、Unknown
-// FIXME：这里的实现可能有问题，以及考虑移动至 utils 包
+// FIXME：这里的实现可能有问题，以及考虑移动至 utils 包, 本函数好像没什么作用了啊
 func getDeviceType(uA string) string {
 	ua := useragent.New(uA)
 	if ua.Mobile() {
@@ -299,71 +295,6 @@ func PreprocessLogs(filePath string) ([]LogEntry, error) {
 	return logs, nil
 }
 
-// func PreprocessLogs(filePath string) ([]LogEntry, error) {
-// 	start := time.Now()
-// 	defer func() {
-// 		duration := time.Since(start)
-// 		fmt.Printf("Log processing execution time: %s\n", duration)
-// 	}()
-// 	file, err := os.Open(filePath)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to open log file: %v", err)
-// 	}
-// 	defer file.Close()
-
-// 	reader := csv.NewReader(file)
-// 	reader.FieldsPerRecord = -1 // Allow variable fields
-
-// 	if _, err := reader.Read(); err != nil {
-// 		return nil, fmt.Errorf("failed to read header: %v", err)
-// 	}
-
-// 	results := make(chan LogEntry)
-// 	errors := make(chan error)
-// 	var wg sync.WaitGroup
-
-// 	// ? think twice on the chunksize
-// 	chunkSize := 1000
-// 	var chunk [][]string
-
-// 	alllogs, err := reader.ReadAll()
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to read all logs: %v", err)
-// 	}
-
-// 	for _, line := range alllogs {
-// 		chunk = append(chunk, line)
-
-// 		if len(chunk) >= chunkSize {
-// 			wg.Add(1)
-// 			go processChunk(chunk, &wg, results, errors)
-// 			chunk = nil // Reset chunk
-// 		}
-// 	}
-
-// 	if len(chunk) > 0 {
-// 		wg.Add(1)
-// 		go processChunk(chunk, &wg, results, errors)
-// 	}
-
-// 	go func() {
-// 		wg.Wait()
-// 		close(results)
-// 		close(errors)
-// 	}()
-
-// 	var logs []LogEntry
-// 	for entry := range results {
-// 		logs = append(logs, entry)
-// 	}
-
-// 	if err, ok := <-errors; ok {
-// 		return nil, fmt.Errorf("error processing logs: %v", err)
-// 	}
-
-// 	return logs, nil
-// }
-
 // TODO: bad input API
 // load new login attempt from a new file
 func LoadNewLoginAttempt(filePath string) (LoginAttempt, error) {
@@ -472,30 +403,3 @@ func GetLoginAttemptVector(attempt LoginAttempt) LogAttemptVector {
 		Platform:            attempt.Platform,
 	}
 }
-
-// ? take this as a reference
-// // ? unused function
-// func String2LogAttemptVector(log string) LogAttemptVector {
-// 	fields := strings.Split(log, ",")
-
-// 	logTime, _ := time.Parse("2006-01-02 15:04", fields[1])
-
-// 	ua := useragent.New(fields[12])
-// 	browserName, browserVersion := ua.Browser()
-// 	osName := ua.OSInfo().Name
-// 	osVersion := ua.OSInfo().Version
-// 	deviceType := getDeviceType(fields[12])
-
-// 	return LogAttemptVector{
-// 		UserID:         fields[0],
-// 		LogTime:        logTime,
-// 		LoginIP:        fields[4],
-// 		City:           fields[8],
-// 		ISP:            fields[9],
-// 		BrowserName:    browserName,
-// 		BrowserVersion: browserVersion,
-// 		OSName:         osName,
-// 		OSVersion:      osVersion,
-// 		DeviceType:     deviceType,
-// 	}
-// }

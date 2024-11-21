@@ -1,3 +1,6 @@
 data/*
 .vscode/*
 .backup/*
+shell.nix
+*/*.old
+.go/*

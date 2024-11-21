@@ -1,7 +1,7 @@
 // Description: Package main connects the preprocessing and risk packages to the risk evaluation system.
 //
 // pass the parameters in the command line
-// // this package can be used to analyze time consumption of the system
+
 package main
 
 import (

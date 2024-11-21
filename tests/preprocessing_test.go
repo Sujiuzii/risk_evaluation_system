@@ -7,7 +7,6 @@ import (
 )
 
 func TestPreprocessLogs(t *testing.T) {
-	// // logs, err := preprocessing.PreprocessLogs("../data/example_log.csv")
 	logs, err := preprocessing.PreprocessLogs("/home/suhui/Projects/risk_engine/dataset/merged_log-20240210.csv")
 	if err != nil {
 		t.Fatalf("Failed to preprocess logs: %v", err)
